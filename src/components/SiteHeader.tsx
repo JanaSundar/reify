@@ -7,14 +7,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { SITE } from "@/lib/site";
 import { buttonClass } from "./buttonStyles";
-import { GitHubIcon, DiscordIcon, XIcon } from "./BrandIcons";
+import { GitHubIcon } from "./BrandIcons";
 import { Logo } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 
-export const NAV = [
-  { href: "/playground", label: "Playground" },
-  { href: SITE.github, label: "GitHub", external: true },
-] as const;
+export const NAV = [{ href: "/playground", label: "Playground" }] as const;
 
 const EASE = [0.23, 1, 0.32, 1] as const;
 
@@ -48,7 +45,7 @@ export function SiteHeader({ variant = "page" }: { variant?: "page" | "app" }) {
         <Logo />
         <ul className="hidden h-full items-stretch gap-8 text-[14px] md:flex">
           {NAV.map((item, index) => {
-            const active = !("external" in item) && pathname === item.href;
+            const active = pathname === item.href;
             return (
               <motion.li
                 key={item.label}
@@ -59,9 +56,8 @@ export function SiteHeader({ variant = "page" }: { variant?: "page" | "app" }) {
               >
                 <Link
                   href={item.href}
-                  {...("external" in item ? { target: "_blank", rel: "noreferrer" } : {})}
                   aria-current={active ? "page" : undefined}
-                  className={`transition-colors hover:text-ink ${active ? "font-medium text-ink" : "text-muted"}`}
+                  className={`flex items-center gap-1.5 transition-colors hover:text-ink ${active ? "font-medium text-ink" : "text-muted"}`}
                 >
                   {item.label}
                 </Link>
@@ -82,6 +78,16 @@ export function SiteHeader({ variant = "page" }: { variant?: "page" | "app" }) {
               Open Playground <ArrowRight size={15} />
             </Link>
           )}
+          <a
+            href={SITE.github}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="reify on GitHub"
+            title="reify on GitHub"
+            className="press grid size-9 place-items-center rounded-full text-muted transition-colors hover:text-ink"
+          >
+            <GitHubIcon className="size-[18px]" />
+          </a>
         </div>
       </nav>
     </header>
@@ -99,13 +105,25 @@ export function SiteFooter() {
       transition={{ duration: 0.6, ease: EASE }}
       className="mt-auto"
     >
-      <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 py-10 sm:px-8 md:flex-row md:items-center">
+      {/* Three equal-width outer columns keep the credit exactly centred. */}
+      <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 py-10 text-[13px] text-muted sm:px-8 md:grid md:grid-cols-[1fr_auto_1fr] md:items-center">
         <div className="flex items-center gap-6">
           <Logo />
-          <p className="text-[13px] text-muted">{SITE.tagline}</p>
+          <p>{SITE.tagline}</p>
         </div>
-        <nav aria-label="Footer" className="md:mx-auto">
-          <ul className="flex flex-wrap gap-x-8 gap-y-2 text-[13px] text-muted">
+        <p className="md:text-center">
+          Made by{" "}
+          <a
+            href={SITE.author.url}
+            target="_blank"
+            rel="author noreferrer"
+            className="font-medium text-ink underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-ink"
+          >
+            {SITE.author.name}
+          </a>
+        </p>
+        <nav aria-label="Footer" className="flex items-center gap-6 md:justify-self-end">
+          <ul className="flex flex-wrap gap-x-8 gap-y-2">
             {FOOTER_LINKS.map((link) => (
               <li key={link.label}>
                 <Link href={link.href} className="transition-colors hover:text-ink">
@@ -114,26 +132,16 @@ export function SiteFooter() {
               </li>
             ))}
           </ul>
+          <a
+            href={SITE.github}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="reify on GitHub"
+            className="press block text-ink opacity-80 transition-opacity hover:opacity-100"
+          >
+            <GitHubIcon className="size-[18px]" />
+          </a>
         </nav>
-        <ul className="flex items-center gap-4 text-ink">
-          {[
-            { href: SITE.x, label: "X", Icon: XIcon },
-            { href: SITE.github, label: "GitHub", Icon: GitHubIcon },
-            { href: SITE.discord, label: "Discord", Icon: DiscordIcon },
-          ].map(({ href, label, Icon }) => (
-            <li key={label}>
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={label}
-                className="press block opacity-80 transition-opacity hover:opacity-100"
-              >
-                <Icon className="size-[18px]" />
-              </a>
-            </li>
-          ))}
-        </ul>
       </div>
     </motion.footer>
   );

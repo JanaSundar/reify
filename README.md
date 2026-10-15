@@ -1,12 +1,16 @@
-# LearnCode
+# reify
 
-A browser-based execution visualizer for data structures and algorithms practice. Write your own
+**Make code tangible.** A browser-based execution visualizer for data structures and algorithms practice. Write your own
 JavaScript or TypeScript, run it, and step forward and backward through what it actually did:
 variables, arrays, objects, references, call stacks and recursion, all derived from the real run.
+
+Source: [github.com/JanaSundar/reify](https://github.com/JanaSundar/reify)
 
 ## Getting started
 
 ```bash
+git clone https://github.com/JanaSundar/reify.git
+cd reify
 pnpm install
 pnpm dev
 ```

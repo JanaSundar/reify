@@ -6,10 +6,9 @@ export const SITE = {
   description:
     "Write code. Watch variables change, functions execute, and data transform — one step at a time. A JavaScript and TypeScript execution visualizer that runs in your browser.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
-  /** Public repository and community links (set the env vars before deploying). */
-  github: process.env.NEXT_PUBLIC_GITHUB_URL ?? "https://github.com",
-  x: process.env.NEXT_PUBLIC_X_URL ?? "https://x.com",
-  discord: process.env.NEXT_PUBLIC_DISCORD_URL ?? "https://discord.com",
+  author: { name: "janasundar", url: "https://janasundar.com" },
+  /** Public source repository. */
+  github: "https://github.com/JanaSundar/reify",
   keywords: [
     "code execution visualizer",
     "JavaScript visualizer",

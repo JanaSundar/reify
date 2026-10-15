@@ -2,7 +2,15 @@
   "name": "learncode",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://github.com/JanaSundar/reify#readme",
+  "bugs": {
+    "url": "https://github.com/JanaSundar/reify/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JanaSundar/reify.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

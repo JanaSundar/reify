@@ -38,6 +38,8 @@ const jsonLd = {
   operatingSystem: "Any (web browser)",
   description: SITE.description,
   url: absoluteUrl("/"),
+  sameAs: [SITE.github],
+  author: { "@type": "Person", name: SITE.author.name, url: SITE.author.url },
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
 };
 

@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   title: { default: SITE.title, template: `%s · ${SITE.name}` },
   description: SITE.description,
   applicationName: SITE.name,
+  authors: [{ name: SITE.author.name, url: SITE.author.url }],
+  creator: SITE.author.name,
   keywords: [...SITE.keywords],
   alternates: { canonical: "/" },
   openGraph: {
