@@ -5,7 +5,8 @@ export const SITE = {
   title: "reify — See what happens inside your code",
   description:
     "Write code. Watch variables change, functions execute, and data transform — one step at a time. A JavaScript and TypeScript execution visualizer that runs in your browser.",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  /** Canonical production origin (override with NEXT_PUBLIC_SITE_URL, e.g. for a custom domain). */
+  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://tryreify.vercel.app",
   author: { name: "janasundar", url: "https://janasundar.com" },
   /** Public source repository. */
   github: "https://github.com/JanaSundar/reify",

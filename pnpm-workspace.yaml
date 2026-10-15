@@ -1,4 +1,5 @@
 allowBuilds:
+  lefthook: false
   sharp: false
   unrs-resolver: false
 minimumReleaseAgeExclude:

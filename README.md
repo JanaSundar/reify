@@ -4,7 +4,7 @@
 JavaScript or TypeScript, run it, and step forward and backward through what it actually did:
 variables, arrays, objects, references, call stacks and recursion, all derived from the real run.
 
-Source: [github.com/JanaSundar/reify](https://github.com/JanaSundar/reify)
+Live: [tryreify.vercel.app](https://tryreify.vercel.app) · Source: [github.com/JanaSundar/reify](https://github.com/JanaSundar/reify)
 
 ## Getting started
 
@@ -32,6 +32,15 @@ Complexity tab shows an estimate from the code and a curve fitted to measured te
 | `pnpm typecheck`                         | `tsc --noEmit`                                                    |
 | `pnpm check`                             | All of the above except the benchmarks                            |
 | `pnpm icons`                             | Regenerate favicons, app icons and the share-image logo           |
+
+## Git hooks
+
+[Lefthook](https://lefthook.dev) installs Git hooks on `pnpm install` (see `lefthook.yml`):
+
+- **pre-commit**: formats staged files with oxfmt (re-staging them) and lints them with oxlint
+- **pre-push**: runs `pnpm typecheck` and `pnpm test`
+
+Skip them once with `git commit --no-verify` or `LEFTHOOK=0 git push`.
 
 ## Documentation
 
