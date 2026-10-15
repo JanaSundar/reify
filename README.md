@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# reify
 
-## Getting Started
+**Make code tangible.** A browser-based execution visualizer for data structures and algorithms practice. Write your own
+JavaScript or TypeScript, run it, and step forward and backward through what it actually did:
+variables, arrays, objects, references, call stacks and recursion, all derived from the real run.
 
-First, run the development server:
+Source: [github.com/JanaSundar/reify](https://github.com/JanaSundar/reify)
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+git clone https://github.com/JanaSundar/reify.git
+cd reify
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000/playground. Run with **Ctrl/Cmd + Enter**, run tests with **Ctrl/Cmd + Shift + Enter**,
+cancel with **Esc**, toggle the console with **Ctrl/Cmd + `**, and step with **Alt + ← / →**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The Tests tab runs your function against cases (arguments and expected value as JavaScript); the
+Complexity tab shows an estimate from the code and a curve fitted to measured test runs.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Script                                   | What it does                                                      |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `pnpm dev` / `pnpm build` / `pnpm start` | Next.js                                                           |
+| `pnpm test`                              | Engine, trace store, coordinator and state machine tests (Vitest) |
+| `pnpm bench`                             | Pipeline benchmarks (results in `docs/performance.md`)            |
+| `pnpm lint` / `pnpm format`              | oxlint / oxfmt                                                    |
+| `pnpm typecheck`                         | `tsc --noEmit`                                                    |
+| `pnpm check`                             | All of the above except the benchmarks                            |
+| `pnpm icons`                             | Regenerate favicons, app icons and the share-image logo           |
 
-To learn more about Next.js, take a look at the following resources:
+## Documentation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- [Architecture](docs/architecture.md): subsystems, instrumentation rules, replay
+- [Execution safety](docs/security.md): guarantees and limitations
+- [Performance baselines](docs/performance.md)
+- [ADR 0001](docs/adr/0001-nextjs-workers-babel.md): Next.js, workers, Babel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
+The source code is released under the [MIT License](LICENSE).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Trademarks
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The MIT license covers the code only. The "reify" name and logo (the files in
+`public/brand/` and the icons generated from them) are not licensed for reuse. If you
+publish a fork or host a modified version, please give it your own name and branding.

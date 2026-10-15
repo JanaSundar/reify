@@ -1,26 +1,468 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens: warm off-white surfaces, near-black ink, a quiet blue accent and a soft
+ * violet for derived values. Every colour is a light-dark() pair, so the theme follows the
+ * OS by default and `data-theme` on <html> pins it (see ThemeToggle).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light dark;
+  --bg: light-dark(#fbfaf8, #0a0a0d);
+  --surface: light-dark(#ffffff, #121217);
+  --surface-2: light-dark(#f5f4f2, #18181f);
+  --surface-3: light-dark(#ecebe8, #22222a);
+  --border: light-dark(#ebe9e5, #24242c);
+  --border-strong: light-dark(#dcdad5, #32323c);
+  --text: light-dark(#1b1b20, #e8e8ec);
+  --ink: light-dark(#0b0b0f, #f6f6f8);
+  --muted: light-dark(#62626c, #a0a0ab);
+  --faint: light-dark(#9a9aa3, #6b6b76);
+  --accent: light-dark(#3a6df0, #7c9dff);
+  --accent-strong: light-dark(#2b59d6, #9bb4ff);
+  --accent-fg: light-dark(#ffffff, #0a0f1f);
+  --accent-soft: light-dark(rgb(58 109 240 / 0.08), rgb(124 157 255 / 0.14));
+  --violet: light-dark(#7c5cf0, #a990ff);
+  --violet-soft: light-dark(#f2eeff, rgb(169 144 255 / 0.12));
+  --violet-line: light-dark(#ddd3ff, rgb(169 144 255 / 0.3));
+  --blue-cell: light-dark(#eef3ff, rgb(124 157 255 / 0.1));
+  --blue-line: light-dark(#cddbff, rgb(124 157 255 / 0.3));
+  --exec-line: light-dark(rgb(58 109 240 / 0.07), rgb(124 157 255 / 0.1));
+  --exec-bar: var(--accent);
+  --changed: light-dark(rgb(124 92 240 / 0.1), rgb(169 144 255 / 0.16));
+  --danger: light-dark(#c4413b, #ff7d74);
+  --warning: light-dark(#a35f00, #e2b245);
+  --success: light-dark(#1f7f4c, #5ccf7d);
+  --val-number: light-dark(#2357c4, #7cb6ff);
+  --val-string: light-dark(#b0462a, #ffa095);
+  --val-keyword: light-dark(#7c3aed, #c4a6ff);
+  --val-type: light-dark(#a35f00, #e2b245);
+  --shadow-color: light-dark(rgb(24 22 40 / 0.14), rgb(0 0 0 / 0.55));
+  --shadow-float:
+    0 1px 2px light-dark(rgb(24 22 40 / 0.04), rgb(0 0 0 / 0.3)),
+    0 18px 40px -18px var(--shadow-color);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-text: var(--text);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-changed: var(--changed);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-hand: var(--font-caveat);
+  --shadow-float: var(--shadow-float);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  /* Inter's optical-size axis follows the font size (tighter display cuts for headings). */
+  font-optical-sizing: auto;
+}
+
+/* Code: slashed zero, and no ligatures (learners should see `=>` and `!==` as typed). */
+code,
+kbd,
+pre,
+.font-mono,
+.cm-scroller {
+  font-feature-settings: "zero";
+  font-variant-ligatures: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- CodeMirror */
+
+.cm-editor {
+  height: 100%;
+  font-size: 13.5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-scroller {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  line-height: 1.7;
+}
+.cm-content {
+  padding: 14px 0 !important;
+}
+.cm-gutters {
+  background: var(--surface) !important;
+  border-right: none !important;
+  color: var(--faint) !important;
+  padding-left: 8px;
+}
+.cm-activeLine,
+.cm-activeLineGutter {
+  background: transparent !important;
+}
+.cm-line {
+  transition: background-color 180ms ease;
+}
+.cm-exec-line {
+  background: var(--exec-line);
+  box-shadow: inset 2px 0 0 var(--exec-bar);
+}
+.cm-exec-line-call {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.cm-cursor {
+  border-left-color: var(--accent) !important;
+  border-left-width: 2px !important;
+}
+.cm-selectionBackground,
+.cm-focused .cm-selectionBackground {
+  background: var(--accent-soft) !important;
+}
+.cm-tooltip {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+}
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--accent-soft) !important;
+  color: var(--text) !important;
+}
+.cm-tooltip-lint {
+  padding: 2px;
+}
+
+/* Resizable panel handles: a small pill centred on the gap, oriented with the split. */
+[data-separator] {
+  position: relative;
+  background: transparent;
+  outline: none;
+}
+[data-separator]::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transform: translate(-50%, -50%);
+  transition:
+    background-color 150ms ease,
+    transform 160ms var(--ease-out);
+}
+/* Between side-by-side panes: a short vertical pill. */
+[data-separator][aria-orientation="vertical"]::after {
+  width: 4px;
+  height: 32px;
+}
+/* Between stacked panes: a short horizontal pill. */
+[data-separator][aria-orientation="horizontal"]::after {
+  width: 32px;
+  height: 4px;
+}
+[data-separator]:hover::after,
+[data-separator]:focus-visible::after,
+[data-separator][data-separator-state="drag"]::after {
+  background: var(--accent);
+}
+[data-separator][aria-orientation="vertical"]:hover::after,
+[data-separator][aria-orientation="vertical"][data-separator-state="drag"]::after {
+  transform: translate(-50%, -50%) scaleY(1.3);
+}
+[data-separator][aria-orientation="horizontal"]:hover::after,
+[data-separator][aria-orientation="horizontal"][data-separator-state="drag"]::after {
+  transform: translate(-50%, -50%) scaleX(1.3);
+}
+
+/* Animate panel sizes only while toggling (never while dragging). */
+[data-group][data-animating="true"] > [data-panel] {
+  transition: flex-grow 320ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-group][data-animating="true"] > [data-panel] {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------- marketing surfaces */
+
+/* Card surface: white panel with a hairline border and a soft, wide shadow. */
+.card {
+  background: var(--surface);
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 1px 2px light-dark(rgb(24 22 40 / 0.03), rgb(0 0 0 / 0.2));
+}
+
+/* Layered as components so utilities (e.g. a hover tint) can still override them. */
+@layer components {
+  /*
+   * Frosted glass: a translucent surface that blurs and tints whatever sits behind it, with a
+   * hairline edge and a brighter top highlight, so cards sit in the page instead of on it.
+   * Only on static surfaces (a blur under moving content would repaint every frame).
+   */
+  .glass {
+    --glass-edge: light-dark(rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.08));
+    --glass-line: light-dark(rgb(24 22 40 / 0.07), rgb(255 255 255 / 0.06));
+    background: light-dark(rgb(255 255 255 / 0.55), rgb(24 24 31 / 0.5));
+    backdrop-filter: blur(18px) saturate(1.4);
+    box-shadow:
+      inset 0 0 0 1px var(--glass-line),
+      inset 0 1px 0 var(--glass-edge),
+      0 1px 2px light-dark(rgb(24 22 40 / 0.03), rgb(0 0 0 / 0.25)),
+      0 24px 48px -32px var(--shadow-color);
+  }
+  /* A denser pane of glass for content that needs contrast (code, tables). */
+  .glass-pane {
+    background: light-dark(rgb(255 255 255 / 0.72), rgb(18 18 23 / 0.62));
+    box-shadow:
+      inset 0 0 0 1px light-dark(rgb(24 22 40 / 0.06), rgb(255 255 255 / 0.06)),
+      inset 0 1px 0 light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.06));
+  }
+}
+
+/* Soft lavender/blue haze used behind hero and section graphics. */
+.haze {
+  background:
+    radial-gradient(
+      45% 45% at 60% 40%,
+      color-mix(in srgb, var(--violet) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35% 35% at 35% 60%,
+      color-mix(in srgb, var(--accent) 14%, transparent),
+      transparent 70%
+    );
+}
+
+/* Glassy translucent sheet (hero R layers, floating panels). */
+.glass-sheet {
+  background: linear-gradient(
+    150deg,
+    light-dark(rgb(255 255 255 / 0.85), rgb(255 255 255 / 0.1)) 0%,
+    color-mix(in srgb, var(--violet) 22%, transparent) 55%,
+    color-mix(in srgb, var(--accent) 26%, transparent) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px light-dark(rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.14)),
+    0 30px 60px -30px color-mix(in srgb, var(--violet) 45%, transparent);
+}
+
+/* Slow ambient motion for decorative graphics only. */
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+/* Diagonal: top-left → bottom-right, resting briefly at each end (played alternately). */
+@keyframes sweep {
+  0%,
+  8% {
+    transform: translate(-36%, -36%);
+  }
+  92%,
+  100% {
+    transform: translate(36%, 36%);
+  }
+}
+@keyframes pulse-once {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ink) 35%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+/* Floating layers get their own compositor layer so the loop never repaints. */
+.animate-float {
+  animation: float-y 7s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-float-slow {
+  animation: float-y 11s ease-in-out infinite;
+  will-change: transform;
+}
+.light-sweep {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.light-sweep::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  /* A soft band across the diagonal; moving the box diagonally sweeps it corner to corner. */
+  background: linear-gradient(135deg, transparent 38%, rgb(255 255 255 / 0.5) 50%, transparent 62%);
+  will-change: transform;
+  /* Goes down to the bottom-right, then comes back up the same path (never jumps back). */
+  animation: sweep 5.5s var(--ease-in-out) 2.4s infinite alternate both;
+}
+.pulse-once {
+  animation: pulse-once 900ms var(--ease-out) 1.2s 1 both;
+}
+
+/*
+ * Hover lift, only on devices that really hover. Only `transform` and `opacity` animate
+ * (compositor-only): the deeper shadow and accent edge live on a pseudo-element that fades
+ * in, instead of transitioning box-shadow, which would repaint the blurred glass each frame.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .lift {
+    position: relative;
+    transition: transform 360ms var(--ease-out);
+    will-change: transform;
+  }
+  .lift::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow:
+      0 30px 60px -30px var(--shadow-color),
+      0 12px 24px -16px color-mix(in srgb, var(--violet) 22%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+    opacity: 0;
+    transition: opacity 360ms var(--ease-out);
+  }
+  .lift:hover {
+    transform: translateY(-4px);
+  }
+  .lift:hover::after {
+    opacity: 1;
+  }
+  /* Pressing settles it back slightly, quickly. */
+  .lift:active {
+    transform: translateY(-2px) scale(0.995);
+    transition-duration: 140ms;
+  }
+}
+
+/* Sticky nav: transparent at the top, frosted once the page scrolls. */
+.site-nav {
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
+}
+.site-nav[data-scrolled="true"] {
+  background-color: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 1px 0 var(--border);
+}
+.site-nav .site-logo {
+  transition: transform 240ms var(--ease-out);
+  transform-origin: left center;
+}
+.site-nav[data-scrolled="true"] .site-logo {
+  transform: scale(0.94);
+}
+
+/* Press feedback for every button-like control. */
+.press {
+  transition: transform 160ms var(--ease-out);
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-float-slow,
+  .light-sweep::after,
+  .pulse-once {
+    animation: none;
+  }
+  .lift,
+  .lift:hover {
+    transform: none;
+  }
+}
+
+/* Breakpoint gutter. */
+.cm-breakpoints {
+  width: 14px;
+  cursor: pointer;
+}
+.cm-breakpoints .cm-gutterElement {
+  display: grid;
+  place-items: center;
+}
+.cm-breakpoint-marker {
+  width: 8px;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Thin scrollbars in panels. */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+/* Theme-specific assets (the logo): show the variant for the active theme. */
+.theme-dark-only {
+  display: none;
+}
+:root[data-theme="dark"] .theme-light-only {
+  display: none;
+}
+:root[data-theme="dark"] .theme-dark-only {
+  display: block;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-light-only {
+    display: none;
+  }
+  :root:not([data-theme="light"]) .theme-dark-only {
+    display: block;
+  }
 }
