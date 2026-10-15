@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { SITE } from "@/lib/site";
 
-export const alt = SITE.title;
+/** The share image for every page: the logo, centred on a dark background. */
+export const alt = SITE.name;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -13,6 +14,10 @@ const logo = `data:image/png;base64,${await readFile(
   "base64",
 )}`;
 
+/** Logo aspect ratio of the official artwork (852 × 263). */
+const LOGO_WIDTH = 480;
+const LOGO_HEIGHT = Math.round((LOGO_WIDTH * 263) / 852);
+
 export default function OpenGraphImage() {
   return new ImageResponse(
     <div
@@ -20,22 +25,13 @@ export default function OpenGraphImage() {
         width: "100%",
         height: "100%",
         display: "flex",
-        flexDirection: "column",
+        alignItems: "center",
         justifyContent: "center",
-        padding: 80,
         background: "#0a0a0d",
-        color: "#f5f1e8",
-        fontSize: 64,
-        fontWeight: 600,
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- ImageResponse needs <img> */}
-      <img src={logo} width={260} height={80} alt="" />
-      <div style={{ marginTop: 40, maxWidth: 900 }}>See what happens inside your code.</div>
-      <div style={{ marginTop: 24, fontSize: 30, color: "#a8a39a", maxWidth: 900 }}>
-        Write code. Watch variables change, functions execute, and data transform — one step at a
-        time.
-      </div>
+      <img src={logo} width={LOGO_WIDTH} height={LOGO_HEIGHT} alt="" />
     </div>,
     size,
   );

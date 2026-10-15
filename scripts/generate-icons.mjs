@@ -116,7 +116,7 @@ await Promise.all([
   ),
   // Raster full logo for the Open Graph image (its renderer handles PNG best).
   sharp(await readFile(`${BRAND}/reify-logo-dark.svg`), { density: 600 })
-    .resize({ width: 640 })
+    .resize({ width: 1200 })
     .png()
     .toBuffer()
     .then((png) => writeFile(`${BRAND}/reify-logo-dark.png`, png)),
