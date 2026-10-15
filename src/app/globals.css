@@ -1,26 +1,146 @@
 @import "tailwindcss";
 
+/* Design tokens. Dark is the default; light follows the OS preference. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0d10;
+  --surface: #12151a;
+  --surface-2: #181c22;
+  --border: #242a33;
+  --text: #e6e9ee;
+  --muted: #8b94a3;
+  --faint: #5b6472;
+  --accent: #5eead4;
+  --accent-strong: #2dd4bf;
+  --accent-fg: #04201c;
+  --exec-line: rgb(250 204 21 / 0.12);
+  --exec-bar: #facc15;
+  --changed: rgb(94 234 212 / 0.16);
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --val-number: #93c5fd;
+  --val-string: #fca5a5;
+  --val-keyword: #c4b5fd;
+  --val-type: #fdba74;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --surface-2: #f1f3f6;
+    --border: #e1e5eb;
+    --text: #111418;
+    --muted: #5b6472;
+    --faint: #8b94a3;
+    --accent: #0d9488;
+    --accent-strong: #0f766e;
+    --accent-fg: #ffffff;
+    --exec-line: rgb(234 179 8 / 0.16);
+    --exec-bar: #ca8a04;
+    --changed: rgb(13 148 136 / 0.12);
+    --danger: #dc2626;
+    --warning: #b45309;
+    --val-number: #1d4ed8;
+    --val-string: #b91c1c;
+    --val-keyword: #6d28d9;
+    --val-type: #c2410c;
+    color-scheme: light;
+  }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-fg: var(--accent-fg);
+  --color-changed: var(--changed);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Buttons confirm presses; only transform animates. */
+.press {
+  transition: transform 140ms var(--ease-out);
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press {
+    transition: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* CodeMirror: execution highlight and theme glue. */
+.cm-editor {
+  height: 100%;
+  font-size: 13.5px;
+  background: var(--surface);
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-scroller {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  line-height: 1.6;
+}
+.cm-gutters {
+  background: var(--surface) !important;
+  border-right: 1px solid var(--border) !important;
+  color: var(--faint) !important;
+}
+.cm-activeLine,
+.cm-activeLineGutter {
+  background: transparent !important;
+}
+.cm-exec-line {
+  background: var(--exec-line);
+  box-shadow: inset 2px 0 0 var(--exec-bar);
+}
+.cm-exec-line-call {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.cm-cursor {
+  border-left-color: var(--accent) !important;
+}
+.cm-selectionBackground,
+.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
+}
+.cm-tooltip {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text);
+}
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: color-mix(in srgb, var(--accent) 25%, transparent) !important;
+  color: var(--text) !important;
+}
+
+/* Resizable panel separators. */
+[data-separator] {
+  background: var(--border);
+  transition: background-color 120ms ease;
+}
+[data-separator]:hover,
+[data-separator][data-separator-state="drag"] {
+  background: var(--accent);
 }

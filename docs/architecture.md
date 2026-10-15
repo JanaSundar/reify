@@ -1,0 +1,99 @@
+# Architecture
+
+LearnCode records what a user's program actually does and lets them replay it. The core
+promise: **visualizations are derived from real execution, never from algorithm templates.**
+
+## Subsystems and data flow
+
+```
+ Editor (CodeMirror 6) ──RUN──▶ XState execution machine ──invokes──▶ ExecutionCoordinator
+                                         ▲                              │          │
+                       lifecycle events  │                     compile  │          │ execute
+                       (run id checked)  │                              ▼          ▼
+                                         │                  compiler worker   runtime worker (fresh per run)
+                                         │                  Babel: strip TS,  new Function + JsTracer,
+                                         │                  check, instrument TraceRecorder (budgets, batching)
+                                         │                              │          │ batched events
+                                         └──────────────────────────────┴──────────▼
+                                                                              TraceStore
+                                                     event log · snapshots · position · step views
+                                                                                  │ useSyncExternalStore
+                                                                                  ▼
+                                                     Inspector · call stack · facts · console · timeline
+```
+
+| Owner                                  | Holds                                                        | Never holds             |
+| -------------------------------------- | ------------------------------------------------------------ | ----------------------- |
+| XState machine (`src/machine`)         | lifecycle status, run id, progress counters, outcome/failure | trace events, snapshots |
+| `TraceStore` (`src/engine/core/trace`) | events, snapshots, playback position, console lines          | lifecycle status        |
+| React local state                      | open panels, playback speed, followed object                 | anything shared         |
+| Zustand                                | not used (no shared UI state needs it yet)                   | —                       |
+
+## Modules
+
+- `src/engine/core/protocol`: language-neutral contracts (values, events, program tables,
+  limits, worker messages and their validators) and `eventCodec` (binary encoding of event
+  batches: an `Int32Array` word stream sent as a transferable buffer plus a per-batch table of
+  distinct strings).
+- `src/engine/core/runtime`: `TraceRecorder` (budgets, batching, poisoning) and `lockdownGlobals`.
+- `src/engine/core/trace`: `applyEvent` (state reducer), `buildStepView` (immutable view and
+  facts), `TraceStore` (ingestion, snapshots, seeking, subscriptions).
+- `src/engine/core/coordinator`: `ExecutionCoordinator` (one active run, workers, timeouts,
+  cancellation, stale-message rejection).
+- `src/engine/languages`: the seam for languages. `catalog.ts` (main thread) and `registry.ts`
+  (workers). A language provides a `LanguageCompiler` and a `LanguageRuntime`.
+- `src/engine/languages/javascript`: the first adapter (JavaScript and TypeScript share it).
+- `src/engine/workers`: thin worker entry points around the testable `handlers.ts`.
+- `src/features/*`: UI. `src/app`: routes (static SEO pages plus the client-only playground).
+
+`src/engine` must not import React, Next.js or UI code (enforced by oxlint).
+
+## Steps
+
+A _step_ begins at a `Line`, `Call` or `Return` event and includes every event until the next
+one. The view shown for a step is the state **after** that step's events, with the step's facts
+("Sets `i` to 1", "Condition on line 4 is true") and the changed variables and cells.
+
+## Instrumentation (JavaScript)
+
+Rules that keep instrumented code faithful to the original:
+
+1. **Wrap values, never restructure control flow.** `if (t)` becomes `if (br(L, t))`, and
+   `x = e` becomes `a(L, x = e, b, x)`. The original expression runs once, in its original order;
+   `&&`, `||`, `??` and ternaries are untouched inside.
+2. **Capture before writing.** `obj[key] op= v` becomes
+   `(_o = obj, _k = key, w(L, _o, _k, _o[_k] op= v))`.
+3. **Balanced frames.** Function bodies become
+   `try { en(...); body } catch (e) { ex(L, e); throw e } finally { lv() }`.
+4. **Block scopes.** Blocks and `for` headers that own `let`/`const` are wrapped in
+   `try { ... } finally { dr(bindings) }`, so shadowed variables appear and disappear correctly.
+5. **Locations are tables.** Injected calls carry small integer loc and binding ids; `ProgramInfo`
+   maps them to original source ranges. TypeScript is stripped first while keeping original node
+   locations, so highlights always point at the user's source.
+6. **Reject rather than mislead.** Unsupported constructs fail compilation with a diagnostic;
+   partially traced ones produce warnings (`src/content/supportedJavascript.ts`).
+
+Correctness is checked by differential tests (`tests/engine/differential.test.ts`): instrumented
+and plain execution must print the same output and throw the same errors, for a corpus of DSA
+programs and for randomly generated programs (fast-check).
+
+## Values and the heap
+
+Objects get stable ids on first sight (WeakMap). Encoding is shallow and iterative, so deep or
+cyclic structures cannot overflow the stack, and it reads through property descriptors so user
+getters never run during inspection. Single-slot writes are sent as `Write` deltas; bulk
+mutations (`push`, `sort`, `Map.set`, ...) re-capture the object. Collections are capped
+(`maxCollectionItems`) and report how many entries were omitted.
+
+## Replay
+
+Seeking clones the nearest snapshot at or before the target step and replays at most one
+snapshot interval of events. Snapshot density halves automatically when `maxSnapshots` is
+exceeded. Playback never re-runs user code.
+
+## Adding a language
+
+1. Implement `LanguageCompiler` and `LanguageRuntime` under `src/engine/languages/<id>/`,
+   emitting the neutral events from `core/protocol`.
+2. Register them in `registry.ts` and describe the language in `catalog.ts`.
+3. Run the corpus through the shared differential harness for that language.
