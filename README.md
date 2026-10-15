@@ -27,6 +27,7 @@ Complexity tab shows an estimate from the code and a curve fitted to measured te
 | `pnpm lint` / `pnpm format`              | oxlint / oxfmt                                                    |
 | `pnpm typecheck`                         | `tsc --noEmit`                                                    |
 | `pnpm check`                             | All of the above except the benchmarks                            |
+| `pnpm icons`                             | Regenerate favicons, app icons and the share-image logo           |
 
 ## Documentation
 
@@ -34,3 +35,13 @@ Complexity tab shows an estimate from the code and a curve fitted to measured te
 - [Execution safety](docs/security.md): guarantees and limitations
 - [Performance baselines](docs/performance.md)
 - [ADR 0001](docs/adr/0001-nextjs-workers-babel.md): Next.js, workers, Babel
+
+## License
+
+The source code is released under the [MIT License](LICENSE).
+
+## Trademarks
+
+The MIT license covers the code only. The "reify" name and logo (the files in
+`public/brand/` and the icons generated from them) are not licensed for reuse. If you
+publish a fork or host a modified version, please give it your own name and branding.
