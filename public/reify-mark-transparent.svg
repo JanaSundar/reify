@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="346 372 326 263" role="img" aria-labelledby="title">
+  <title id="title">reify</title>
+  <defs>
+    <linearGradient id="sheet-back" x1="355" y1="500" x2="497" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8e96aa" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#b9adaa" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="sheet-mid" x1="420" y1="410" x2="500" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d4d0d2" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#8f8789" stop-opacity="0.32"/>
+    </linearGradient>
+    <linearGradient id="stem" x1="520" y1="400" x2="470" y2="600" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8f8a8b"/>
+      <stop offset="0.45" stop-color="#6e5d58"/>
+      <stop offset="0.8" stop-color="#c79f86"/>
+      <stop offset="1" stop-color="#d9b4a0"/>
+    </linearGradient>
+    <linearGradient id="face" x1="575" y1="380" x2="595" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fdfaf5"/>
+      <stop offset="0.6" stop-color="#efe8e1"/>
+      <stop offset="1" stop-color="#d8cbc2"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="505" cy="528" r="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f4a878" stop-opacity="0.8"/>
+      <stop offset="0.55" stop-color="#f4a878" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#f4a878" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="behind-r"><path d="M0 0H760V365.63L496.20 524.46V1024H0Z"/></clipPath>
+    <clipPath id="behind-stem"><path d="M0 0H760V365.63L496.20 524.46V560H466.12V1024H0Z"/></clipPath>
+    <clipPath id="in-stem"><path d="M501.66 521.17A7.50 7.50 0 0 0 496.20 528.39L496.20 605.80L471.30 589.11A11.70 11.70 0 0 1 466.12 579.39L466.12 386.96A6.00 6.00 0 0 1 468.81 381.95L557.12 431.03A31.20 31.20 0 0 1 573.13 456.96L573.20 458.62A32.00 32.00 0 0 1 557.74 487.41L501.66 521.17Z"/></clipPath>
+    <clipPath id="in-r"><path d="M582.58 380.96A54.50 54.50 0 0 1 637.08 435.46L637.08 469.21A51.88 51.88 0 0 1 585.19 521.10L585.18 521.10L661.58 610.90A4.60 4.60 0 0 1 658.07 618.48L606.18 618.48A34.60 34.60 0 0 1 579.83 606.30L509.42 523.53A7.50 7.50 0 0 0 496.20 528.39L496.20 605.80L471.30 589.11A11.70 11.70 0 0 1 466.12 579.39L466.12 386.96A6.00 6.00 0 0 1 472.12 380.96L582.58 380.96Z"/></clipPath>
+  </defs>
+
+  
+
+  <!-- Translucent sheets -->
+  <g clip-path="url(#behind-r)" stroke="#ffffff" stroke-width="1" stroke-linejoin="round">
+    <path d="M354.71 435.72A6.00 6.00 0 0 1 363.53 430.43L458.23 480.91A14.00 14.00 0 0 1 465.64 493.27L465.64 580.19A9.60 9.60 0 0 0 469.89 588.17L496.20 605.80L496.20 616.01A9.50 9.50 0 0 1 482.21 624.38L366.57 562.29A22.50 22.50 0 0 1 354.71 542.47L354.71 435.72Z" fill="url(#sheet-back)" stroke-opacity="0.3"/>
+    <path d="M409.82 412.25A5.80 5.80 0 0 1 418.40 407.15L511.23 457.63A22.00 22.00 0 0 1 522.72 476.68L523.79 560.00L496.20 560.00L496.20 593.11A6.00 6.00 0 0 1 487.29 598.36L419.30 560.66A18.40 18.40 0 0 1 409.82 544.56L409.82 412.25Z" fill="url(#sheet-mid)" stroke-opacity="0.34" clip-path="url(#behind-stem)"/>
+  </g>
+
+  <!-- The R: stem and face share one divider, so they meet without a seam -->
+  <path d="M582.58 380.96A54.50 54.50 0 0 1 637.08 435.46L637.08 469.21A51.88 51.88 0 0 1 585.19 521.10L585.18 521.10L661.58 610.90A4.60 4.60 0 0 1 658.07 618.48L606.18 618.48A34.60 34.60 0 0 1 579.83 606.30L509.42 523.53A7.50 7.50 0 0 0 496.20 528.39L496.20 605.80L471.30 589.11A11.70 11.70 0 0 1 466.12 579.39L466.12 386.96A6.00 6.00 0 0 1 472.12 380.96L582.58 380.96Z" fill="url(#stem)"/>
+  <path d="M501.66 521.17A7.50 7.50 0 0 0 496.20 528.39L496.20 605.80L471.30 589.11A11.70 11.70 0 0 1 466.12 579.39L466.12 386.96A6.00 6.00 0 0 1 468.81 381.95L557.12 431.03A31.20 31.20 0 0 1 573.13 456.96L573.20 458.62A32.00 32.00 0 0 1 557.74 487.41L501.66 521.17Z" fill="url(#stem)"/>
+  <g clip-path="url(#in-stem)">
+    <path d="M409.82 412.25A5.80 5.80 0 0 1 418.40 407.15L511.23 457.63A22.00 22.00 0 0 1 522.72 476.68L523.79 560.00L496.20 560.00L496.20 593.11A6.00 6.00 0 0 1 487.29 598.36L419.30 560.66A18.40 18.40 0 0 1 409.82 544.56L409.82 412.25Z" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="1" clip-path="url(#behind-stem)"/>
+  </g>
+  <path d="M468.81 381.95A6.00 6.00 0 0 1 472.12 380.96L582.58 380.96A54.50 54.50 0 0 1 637.08 435.46L637.08 469.21A51.88 51.88 0 0 1 585.19 521.10L585.18 521.10L661.58 610.90A4.60 4.60 0 0 1 658.07 618.48L606.18 618.48A34.60 34.60 0 0 1 579.83 606.30L509.42 523.53A7.50 7.50 0 0 0 501.66 521.17L557.74 487.41A32.00 32.00 0 0 0 573.20 458.62L573.13 456.96A31.20 31.20 0 0 0 557.12 431.03L468.81 381.95Z" fill="url(#face)"/>
+  <rect x="420" y="440" width="180" height="190" fill="url(#glow)" clip-path="url(#in-r)"/>
+  <path d="M582.58 380.96A54.50 54.50 0 0 1 637.08 435.46L637.08 469.21A51.88 51.88 0 0 1 585.19 521.10L585.18 521.10L661.58 610.90A4.60 4.60 0 0 1 658.07 618.48L606.18 618.48A34.60 34.60 0 0 1 579.83 606.30L509.42 523.53A7.50 7.50 0 0 0 496.20 528.39L496.20 605.80L471.30 589.11A11.70 11.70 0 0 1 466.12 579.39L466.12 386.96A6.00 6.00 0 0 1 472.12 380.96L582.58 380.96Z" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="0.8" stroke-linejoin="round"/>
+
+</svg>

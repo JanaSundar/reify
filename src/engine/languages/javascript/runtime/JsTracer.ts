@@ -29,10 +29,14 @@ export class JsTracer {
   private nextFrameId = 1;
   private lastLoc: LocId = -1;
 
+  /** Encoding is skipped entirely when the recorder does not record (test runs). */
+  private readonly recording: boolean;
+
   constructor(
     private readonly recorder: TraceRecorder,
     limits: ExecutionLimits,
   ) {
+    this.recording = recorder.recording;
     this.encoder = new JsValueEncoder(limits, {
       heap: (o, via) =>
         this.recorder.emit(via ? { k: EventKind.Heap, o, via } : { k: EventKind.Heap, o }),
@@ -87,6 +91,7 @@ export class JsTracer {
     this.recorder.enterFrame();
     this.recorder.step();
     this.lastLoc = l;
+    if (!this.recording) return;
     this.recorder.emit({
       k: EventKind.Call,
       l,
@@ -108,7 +113,7 @@ export class JsTracer {
   ex(l: LocId, error: unknown): void {
     const frame = this.frames.at(-1);
     if (frame) frame.threw = true;
-    if (isResourceLimitError(error) || this.recorder.poisoned) return;
+    if (!this.recording || isResourceLimitError(error) || this.recorder.poisoned) return;
     this.recorder.emit({
       k: EventKind.Throw,
       l: this.lastLoc >= 0 ? this.lastLoc : l,
@@ -120,7 +125,7 @@ export class JsTracer {
   lv(): void {
     const frame = this.frames.pop();
     this.recorder.leaveFrame();
-    if (!frame) return;
+    if (!frame || !this.recording) return;
     const value = frame.threw
       ? this.encoder.encode(undefined)
       : this.encoder.encode(frame.returnValue);
@@ -139,7 +144,7 @@ export class JsTracer {
     if (isStackOverflow(error))
       this.recorder.fail(new ResourceLimitError("call-depth", "Maximum call stack size exceeded."));
     this.ln(l);
-    if (binding !== NO_BINDING) {
+    if (this.recording && binding !== NO_BINDING) {
       this.recorder.emit({ k: EventKind.Declare, l, b: binding, v: this.encoder.encode(error) });
     }
   }
@@ -147,16 +152,19 @@ export class JsTracer {
   // ---------------------------------------------------------------- bindings
 
   d(l: LocId, ...pairs: unknown[]): void {
+    if (!this.recording) return;
     for (const [b, v] of this.encodePairs(pairs))
       this.recorder.emit({ k: EventKind.Declare, l, b, v });
   }
 
   d1(l: LocId, b: BindingId, value: unknown): unknown {
+    if (!this.recording) return value;
     this.recorder.emit({ k: EventKind.Declare, l, b, v: this.encoder.encode(value) });
     return value;
   }
 
   a(l: LocId, result: unknown, ...pairs: unknown[]): unknown {
+    if (!this.recording) return result;
     for (const [b, v] of this.encodePairs(pairs))
       this.recorder.emit({ k: EventKind.Assign, l, b, v });
     return result;
@@ -169,18 +177,19 @@ export class JsTracer {
   // ---------------------------------------------------------------- heap
 
   w(l: LocId, object: unknown, key: unknown, result: unknown): unknown {
-    this.encoder.write(object, key, l);
+    if (this.recording) this.encoder.write(object, key, l);
     return result;
   }
 
   pw(l: LocId, result: unknown, ...targets: unknown[]): unknown {
+    if (!this.recording) return result;
     for (let i = 0; i + 1 < targets.length; i += 2)
       this.encoder.write(targets[i], targets[i + 1], l);
     return result;
   }
 
   m(l: LocId, op: string, result: unknown, object: unknown = result): unknown {
-    if (isObjectLike(object)) this.encoder.recapture(object, { l, op });
+    if (this.recording && isObjectLike(object)) this.encoder.recapture(object, { l, op });
     return result;
   }
 
@@ -208,6 +217,7 @@ export class JsTracer {
   }
 
   private print(level: ConsoleLevel, args: readonly unknown[]): void {
+    if (!this.recording) return;
     this.recorder.emit({
       k: EventKind.Console,
       l: this.lastLoc,

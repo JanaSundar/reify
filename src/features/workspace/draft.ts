@@ -1,12 +1,6 @@
-import { DEFAULT_LANGUAGE_ID, findLanguage } from "@/engine/languages/catalog";
+import type { TestSuite } from "@/engine/core/protocol/testing";
 
-export interface Draft {
-  readonly languageId: string;
-  readonly source: string;
-}
-
-const STORAGE_KEY = "learncode:draft:v1";
-
+/** The starter program and test suite of a fresh workspace (its `index.js`). */
 export const STARTER_SOURCE = `// Write your own solution, then press Run (Ctrl+Enter).
 function twoSum(nums, target) {
   const seen = new Map();
@@ -21,25 +15,17 @@ function twoSum(nums, target) {
 console.log(twoSum([2, 7, 11, 15], 18));
 `;
 
-const STARTER: Draft = { languageId: DEFAULT_LANGUAGE_ID, source: STARTER_SOURCE };
-
-/** The editor draft persists per browser; storage failures fall back to the starter. */
-export const loadDraft = (): Draft => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return STARTER;
-    const parsed = JSON.parse(raw) as Partial<Draft>;
-    if (typeof parsed.source !== "string" || !findLanguage(parsed.languageId ?? "")) return STARTER;
-    return { languageId: parsed.languageId!, source: parsed.source };
-  } catch {
-    return STARTER;
-  }
-};
-
-export const saveDraft = (draft: Draft): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
-  } catch {
-    // Storage may be unavailable (private mode, quota); the draft just isn't kept.
-  }
+export const STARTER_SUITE: TestSuite = {
+  entry: "twoSum",
+  target: "return",
+  cases: [
+    { id: "starter-1", args: "[2, 7, 11, 15], 9", expected: "[0, 1]" },
+    { id: "starter-2", args: "[3, 2, 4], 6", expected: "[1, 2]" },
+    { id: "starter-3", args: "Array.from({ length: 40 }, (_, i) => i), 77", expected: "[38, 39]" },
+    {
+      id: "starter-4",
+      args: "Array.from({ length: 160 }, (_, i) => i), 317",
+      expected: "[158, 159]",
+    },
+  ],
 };

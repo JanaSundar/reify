@@ -5,7 +5,9 @@ import type {
   RunPhase,
   RunRequest,
 } from "@/engine/core/coordinator/ExecutionCoordinator";
+import type { StaticComplexity } from "@/engine/core/analysis/complexity";
 import type { RunOutcome, RunStats } from "@/engine/core/protocol/limits";
+import type { TestResult, TestSuite } from "@/engine/core/protocol/testing";
 
 /**
  * Execution lifecycle — the single source of truth for "what is the run doing".
@@ -23,12 +25,18 @@ export interface ExecutionContext {
   readonly outcome: RunOutcome | null;
   readonly stats: RunStats | null;
   readonly failure: RunFailure | null;
+  /** Static analysis of the last compiled program. */
+  readonly analysis: StaticComplexity | null;
+  /** Results of the latest test run; kept while individual cases are traced. */
+  readonly testResults: readonly TestResult[];
 }
 
 export type ExecutionEvent =
-  | { type: "RUN"; source: string; languageId: string }
+  | { type: "RUN"; source: string; languageId: string; suite?: TestSuite }
   | { type: "CANCEL" }
   | { type: "RESET" }
+  | { type: "EXECUTION_COMPILED"; runId: number; analysis: StaticComplexity | null }
+  | { type: "EXECUTION_TEST_RESULT"; runId: number; result: TestResult }
   | { type: "EXECUTION_PROGRESS"; runId: number; phase: RunPhase; steps: number; events: number }
   | { type: "EXECUTION_COMPLETE"; runId: number; outcome: RunOutcome; stats: RunStats }
   | { type: "EXECUTION_ERROR"; runId: number; failure: RunFailure }
@@ -42,6 +50,9 @@ export const createExecutionActor = (coordinator: ExecutionCoordinator) =>
     const { runId } = input;
     const handle = coordinator.start(input, {
       onProgress: (progress) => sendBack({ type: "EXECUTION_PROGRESS", runId, ...progress }),
+      onCompiled: (program) =>
+        sendBack({ type: "EXECUTION_COMPILED", runId, analysis: program.complexity }),
+      onTestResult: (result) => sendBack({ type: "EXECUTION_TEST_RESULT", runId, result }),
       onComplete: (outcome, stats) =>
         sendBack({ type: "EXECUTION_COMPLETE", runId, outcome, stats }),
       onError: (failure) => sendBack({ type: "EXECUTION_ERROR", runId, failure }),
@@ -62,6 +73,8 @@ const INITIAL_CONTEXT: ExecutionContext = {
   outcome: null,
   stats: null,
   failure: null,
+  analysis: null,
+  testResults: [],
 };
 
 /** How long `cancelling` waits for the worker to acknowledge before giving up on it. */
@@ -84,11 +97,21 @@ export const executionMachine = setup({
       return {
         ...INITIAL_CONTEXT,
         runId: context.runId + 1,
-        request: { source: event.source, languageId: event.languageId },
+        request: { source: event.source, languageId: event.languageId, suite: event.suite },
         phase: "compiling" as const,
+        analysis: context.analysis,
+        testResults: event.suite ? [] : context.testResults,
       };
     }),
     resetContext: assign(({ context }) => ({ ...INITIAL_CONTEXT, runId: context.runId })),
+    recordAnalysis: assign(({ event }) =>
+      event.type === "EXECUTION_COMPILED" ? { analysis: event.analysis } : {},
+    ),
+    recordTestResult: assign(({ context, event }) =>
+      event.type === "EXECUTION_TEST_RESULT"
+        ? { testResults: [...context.testResults, event.result] }
+        : {},
+    ),
   },
   guards: {
     isCurrentRun: ({ context, event }) => "runId" in event && event.runId === context.runId,
@@ -112,6 +135,8 @@ export const executionMachine = setup({
       },
       initial: "running",
       on: {
+        EXECUTION_COMPILED: { guard: "isCurrentRun", actions: "recordAnalysis" },
+        EXECUTION_TEST_RESULT: { guard: "isCurrentRun", actions: "recordTestResult" },
         EXECUTION_COMPLETE: {
           guard: "isCurrentRun",
           target: "completed",

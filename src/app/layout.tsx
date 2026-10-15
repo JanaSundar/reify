@@ -1,10 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Caveat, Inter, JetBrains_Mono } from "next/font/google";
 import { SITE } from "@/lib/site";
+import { MotionProvider } from "@/components/MotionProvider";
+import { THEME_SCRIPT } from "@/components/theme";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+/**
+ * Variable fonts throughout: one file per family covers every weight. Inter also carries
+ * the optical-size axis, so large headings and small UI text each get the right letterforms.
+ */
+const sans = Inter({ variable: "--font-inter", subsets: ["latin"], axes: ["opsz"] });
+const mono = JetBrains_Mono({ variable: "--font-jetbrains-mono", subsets: ["latin"] });
+/** Handwritten annotations on the landing page only. */
+const hand = Caveat({ variable: "--font-caveat", subsets: ["latin"], weight: "variable" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
@@ -26,15 +34,25 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0b0d10" },
-    { media: "(prefers-color-scheme: light)", color: "#f7f8fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0d" },
+    { media: "(prefers-color-scheme: light)", color: "#fbfaf8" },
   ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col font-sans">{children}</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${sans.variable} ${mono.variable} ${hand.variable} h-full antialiased`}
+    >
+      <head>
+        {/* Applies a pinned light/dark theme before first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className="flex min-h-full flex-col font-sans">
+        <MotionProvider>{children}</MotionProvider>
+      </body>
     </html>
   );
 }

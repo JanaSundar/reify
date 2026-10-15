@@ -64,9 +64,9 @@ export const bannerFor = (
 };
 
 const TONE_CLASS: Record<Tone, string> = {
-  danger: "border-danger/40 bg-danger/10 text-danger",
-  warning: "border-warning/40 bg-warning/10 text-warning",
-  muted: "border-border bg-surface-2 text-muted",
+  danger: "bg-danger/10 text-danger",
+  warning: "bg-warning/12 text-warning",
+  muted: "bg-surface-2 text-muted",
 };
 
 export function RunBanner({ message }: { message: BannerMessage | null }) {
@@ -81,7 +81,7 @@ export function RunBanner({ message }: { message: BannerMessage | null }) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
           transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-          className={`m-2 rounded-lg border px-3 py-2 text-sm ${TONE_CLASS[message.tone]}`}
+          className={`mx-3 mt-3 rounded-xl px-3.5 py-2.5 text-sm ${TONE_CLASS[message.tone]}`}
         >
           <p className="font-medium">{message.title}</p>
           {message.details.map((detail) => (

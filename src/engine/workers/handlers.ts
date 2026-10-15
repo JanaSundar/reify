@@ -2,11 +2,14 @@ import type {
   CompileRequest,
   CompilerWorkerMessage,
   ExecuteRequest,
+  RuntimeRequest,
   RuntimeWorkerMessage,
+  TestRequest,
 } from "../core/protocol/messages";
 import { encodeEvents } from "../core/protocol/eventCodec";
 import { TraceRecorder } from "../core/runtime/TraceRecorder";
 import { loadCompiler, loadRuntime } from "../languages/registry";
+import type { LanguageRuntime } from "../languages/types";
 
 type Post<T> = (message: T) => void;
 /** Posts a message, moving (not copying) the listed buffers to the receiver. */
@@ -51,6 +54,21 @@ export interface RuntimeEnvironment {
   readonly lockdown: () => void;
 }
 
+/** Loads the runtime for a request, reporting an unknown language as a failure. */
+const runtimeFor = async (
+  request: RuntimeRequest,
+  env: RuntimeEnvironment,
+): Promise<LanguageRuntime | null> => {
+  const runtime = await loadRuntime(request.languageId)?.catch(() => null);
+  if (!runtime) {
+    env.post(
+      { type: "failure", runId: request.runId, message: `Unknown language: ${request.languageId}` },
+      [],
+    );
+  }
+  return runtime ?? null;
+};
+
 /**
  * Runtime worker logic: executes one program and streams batched events. The worker is
  * single-use; the coordinator terminates it afterwards.
@@ -60,11 +78,8 @@ export const handleExecute = async (
   env: RuntimeEnvironment,
 ): Promise<void> => {
   const { runId } = request;
-  const runtime = await loadRuntime(request.languageId)?.catch(() => null);
-  if (!runtime) {
-    env.post({ type: "failure", runId, message: `Unknown language: ${request.languageId}` }, []);
-    return;
-  }
+  const runtime = await runtimeFor(request, env);
+  if (!runtime) return;
   const recorder = new TraceRecorder(request.limits, (events) => {
     const batch = encodeEvents(events);
     env.post({ type: "events", runId, batch }, [batch.buffer]);
@@ -81,14 +96,45 @@ export const handleExecute = async (
   const executeMs = env.now() - started;
   recorder.close();
   env.post(
+    { type: "done", runId, outcome, steps: recorder.steps, events: recorder.events, executeMs },
+    [],
+  );
+};
+
+/** Runs every test case in order, reporting each result as soon as it is known. */
+export const handleTest = async (request: TestRequest, env: RuntimeEnvironment): Promise<void> => {
+  const { runId, suite } = request;
+  const runtime = await runtimeFor(request, env);
+  if (!runtime) return;
+  env.lockdown();
+  const started = env.now();
+  let steps = 0;
+  for (const testCase of suite.cases) {
+    let result;
+    try {
+      result = runtime.runTest(request.code, suite, testCase, request.limits);
+    } catch (error) {
+      env.post({ type: "failure", runId, message: `Runtime crashed: ${errorText(error)}` }, []);
+      return;
+    }
+    steps += result.steps;
+    env.post({ type: "test-result", runId, result }, []);
+  }
+  env.post(
     {
       type: "done",
       runId,
-      outcome,
-      steps: recorder.steps,
-      events: recorder.events,
-      executeMs,
+      outcome: { kind: "ok" },
+      steps,
+      events: 0,
+      executeMs: env.now() - started,
     },
     [],
   );
 };
+
+export const handleRuntimeRequest = (
+  request: RuntimeRequest,
+  env: RuntimeEnvironment,
+): Promise<void> =>
+  request.type === "execute" ? handleExecute(request, env) : handleTest(request, env);

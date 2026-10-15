@@ -38,6 +38,9 @@ importers:
       '@xstate/react':
         specifier: ^6.1.0
         version: 6.1.0(@types/react@19.3.0)(react@19.3.0)(xstate@5.33.2)
+      lucide-react:
+        specifier: ^1.56.0
+        version: 1.56.0(@types/react@19.3.0)(react@19.3.0)
       motion:
         specifier: ^14.2.0
         version: 14.2.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -93,6 +96,9 @@ importers:
       oxlint:
         specifier: ^1.88.0
         version: 1.88.0
+      sharp:
+        specifier: ^0.35.5
+        version: 0.35.5(@types/node@24.19.2)
       tailwindcss:
         specifier: ^4
         version: 4.3.3
@@ -1389,6 +1395,15 @@ packages:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
     engines: {node: 20 || >=22}
 
+  lucide-react@1.56.0:
+    resolution: {integrity: sha512-b+hqj30/trHBma5r1zlKb6yLewQp6tUtnz9loc3xdrYerPmvLYhlEbyPVCJ8DOg2/blBf6lwPLznftFVACka6A==}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
@@ -2002,8 +2017,7 @@ snapshots:
   '@exodus/bytes@1.16.0':
     optional: true
 
-  '@img/colour@1.1.0':
-    optional: true
+  '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
     optionalDependencies:
@@ -2763,6 +2777,12 @@ snapshots:
   lru-cache@11.5.3:
     optional: true
 
+  lucide-react@1.56.0(@types/react@19.3.0)(react@19.3.0):
+    dependencies:
+      react: 19.3.0
+    optionalDependencies:
+      '@types/react': 19.3.0
+
   lz-string@1.5.0: {}
 
   magic-string@0.30.21:
@@ -2945,8 +2965,7 @@ snapshots:
 
   scheduler@0.28.0: {}
 
-  semver@7.8.5:
-    optional: true
+  semver@7.8.5: {}
 
   sharp@0.35.5(@types/node@24.19.2):
     dependencies:
@@ -2980,7 +2999,6 @@ snapshots:
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
       '@types/node': 24.19.2
-    optional: true
 
   source-map-js@1.2.2: {}
 

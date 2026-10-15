@@ -8,8 +8,17 @@ export default function manifest(): MetadataRoute.Manifest {
     description: SITE.description,
     start_url: "/playground",
     display: "standalone",
-    background_color: "#0b0d10",
-    theme_color: "#0b0d10",
-    icons: [{ src: "/favicon.ico", sizes: "any", type: "image/x-icon" }],
+    background_color: "#fbfaf8",
+    theme_color: "#fbfaf8",
+    icons: [
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      {
+        src: "/icons/icon-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
+    ],
   };
 }

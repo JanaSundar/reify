@@ -3,6 +3,7 @@ import type { RunOutcome, RunStats } from "../protocol/limits";
 import type { ProgramInfo } from "../protocol/program";
 import { applyEvent, cloneState, createInitialState, type RuntimeState } from "./state";
 import { buildStepView, type StepView } from "./stepView";
+import { summarizeStep, type StepSummary } from "./summary";
 
 export interface ConsoleLine {
   readonly step: number;
@@ -27,7 +28,18 @@ export interface TraceSnapshot {
   readonly stats: RunStats | null;
   /** True when the recorded history is incomplete (limit, cancellation or store cap). */
   readonly truncated: boolean;
+  /** Space indicators over the whole run (call frames and captured objects). */
+  readonly metrics: TraceMetrics;
 }
+
+export interface TraceMetrics {
+  /** Deepest call stack, counting the global frame. */
+  readonly maxDepth: number;
+  /** Distinct objects (arrays, maps, nodes, ...) the program created or touched. */
+  readonly objects: number;
+}
+
+const NO_METRICS: TraceMetrics = { maxDepth: 0, objects: 0 };
 
 export interface TraceStoreOptions {
   /** Steps between snapshots initially; doubles whenever `maxSnapshots` is exceeded. */
@@ -59,6 +71,7 @@ const EMPTY_SNAPSHOT: TraceSnapshot = {
   outcome: null,
   stats: null,
   truncated: false,
+  metrics: NO_METRICS,
 };
 
 /**
@@ -87,6 +100,7 @@ export class TraceStore {
   private outcome: RunOutcome | null = null;
   private stats: RunStats | null = null;
   private truncated = false;
+  private metrics: TraceMetrics = NO_METRICS;
   private position = 0;
 
   private cached: TraceSnapshot = EMPTY_SNAPSHOT;
@@ -172,6 +186,41 @@ export class TraceStore {
     this.seek(this.position + delta);
   }
 
+  // ---------------------------------------------------------------- per-step queries
+
+  /** Execution-log summaries for steps `from` (inclusive) to `to` (exclusive). */
+  summaries(from: number, to: number): StepSummary[] {
+    const program = this.program;
+    if (!program) return [];
+    const result: StepSummary[] = [];
+    const end = Math.min(to, this.stepStarts.length);
+    for (let step = Math.max(0, from); step < end; step++) {
+      const start = this.stepStarts[step]!;
+      const stop = this.stepStarts[step + 1] ?? this.events.length;
+      result.push(
+        summarizeStep(
+          this.events.slice(start, stop),
+          program,
+          step,
+          (id) => this.live.heap.get(id)?.typeName,
+        ),
+      );
+    }
+    return result;
+  }
+
+  /** Source line a step starts on (null for set-up steps). Constant time. */
+  lineAt(step: number): number | null {
+    const program = this.program;
+    if (!program) return null;
+    const end = this.stepStarts[step + 1] ?? this.events.length;
+    for (let i = this.stepStarts[step] ?? end; i < end; i++) {
+      const event = this.events[i]!;
+      if (isStepBoundary(event) && "l" in event) return program.locs[event.l]?.line ?? null;
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------- internals
 
   private ingest(event: TraceEvent, program: ProgramInfo): void {
@@ -183,6 +232,15 @@ export class TraceStore {
     }
     this.events.push(event);
     applyEvent(this.live, event, program);
+    if (
+      this.live.frames.length > this.metrics.maxDepth ||
+      this.live.heap.size > this.metrics.objects
+    ) {
+      this.metrics = {
+        maxDepth: Math.max(this.metrics.maxDepth, this.live.frames.length),
+        objects: Math.max(this.metrics.objects, this.live.heap.size),
+      };
+    }
     if (event.k === EventKind.Console) {
       this.console.push({ step: this.stepStarts.length - 1, level: event.level, text: event.text });
     }
@@ -241,6 +299,7 @@ export class TraceStore {
       outcome: this.outcome,
       stats: this.stats,
       truncated: this.truncated,
+      metrics: this.metrics,
     };
   }
 
@@ -259,6 +318,7 @@ export class TraceStore {
     this.outcome = null;
     this.stats = null;
     this.truncated = false;
+    this.metrics = NO_METRICS;
     this.position = 0;
     this.viewCache = null;
   }

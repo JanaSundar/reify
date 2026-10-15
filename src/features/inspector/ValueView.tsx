@@ -50,7 +50,7 @@ export function RefChip({
           ? "Reference back to an enclosing object (cycle)"
           : "Highlight every reference to this object"
       }
-      className={`press inline-flex items-center gap-1 rounded px-1.5 py-px font-mono text-xs ring-1 ${
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-px font-mono text-xs ring-1 ${
         active ? "bg-accent text-accent-fg ring-accent" : "text-muted ring-border hover:text-text"
       }`}
     >
@@ -124,7 +124,7 @@ function HeapObjectView({
           type="button"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
-          className="press rounded px-0.5 text-faint hover:text-text"
+          className="rounded px-0.5 text-faint hover:text-text"
           aria-label={open ? "Collapse" : "Expand"}
         >
           {open ? "▾" : "▸"}
@@ -170,7 +170,7 @@ function HeapBody({
       return (
         <div className="flex flex-wrap gap-1.5 pl-4">
           {object.items.map((item, i) => (
-            <span key={i} className="rounded border border-border px-1.5 py-0.5">
+            <span key={i} className="rounded-[3px] bg-surface px-1.5 py-0.5">
               <ValueView value={item} depth={depth + 1} ancestors={ancestors} />
             </span>
           ))}
@@ -241,7 +241,7 @@ function ListView({
 
   if (isMatrix) {
     return (
-      <table className="ml-4 border-separate border-spacing-0 font-mono text-xs">
+      <table className="ml-4 border-separate border-spacing-0.5 font-mono text-xs">
         <tbody>
           {rows.map((row, r) => {
             const rowChange = view.heapChanges.get(row!.id);
@@ -252,7 +252,7 @@ function ListView({
                   row!.items.map((cell, c) => (
                     <td
                       key={c}
-                      className={`min-w-8 border border-border px-1.5 py-0.5 text-center ${changedKeys(rowChange, c) ? "bg-changed" : ""}`}
+                      className={`min-w-8 rounded-[2px] px-1.5 py-0.5 text-center ${changedKeys(rowChange, c) ? "bg-changed" : "bg-surface"}`}
                     >
                       {cell.kind === "primitive" ? <PrimitiveText value={cell} /> : null}
                     </td>
@@ -267,13 +267,13 @@ function ListView({
 
   const visible = showAll ? items : items.slice(0, MAX_CELLS);
   return (
-    <div className="flex flex-wrap items-start gap-y-2 pl-4">
+    <div className="flex flex-wrap items-start gap-x-0.5 gap-y-2 pl-4">
       {visible.map((item, index) => (
         <div key={index} className="flex min-w-9 flex-col items-center">
           <div
-            className={`flex min-h-7 w-full items-center justify-center border border-border px-1.5 py-0.5 text-sm ${
-              index === 0 ? "rounded-l" : "-ml-px"
-            } ${index === visible.length - 1 ? "rounded-r" : ""} ${changedKeys(change, index) ? "bg-changed" : ""}`}
+            className={`flex min-h-7 w-full items-center justify-center rounded-[3px] px-1.5 py-0.5 text-sm ${
+              changedKeys(change, index) ? "bg-changed ring-1 ring-accent/50" : "bg-surface"
+            }`}
           >
             {item.kind === "primitive" ? (
               <PrimitiveText value={item} />
@@ -294,7 +294,7 @@ function ListView({
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="press ml-2 self-center text-xs text-accent"
+          className="ml-2 self-center text-xs text-accent"
         >
           show {items.length - MAX_CELLS} more
         </button>

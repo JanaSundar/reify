@@ -1,19 +1,24 @@
 /** Site-wide constants used for metadata, sitemap and structured data. */
 export const SITE = {
-  name: "LearnCode",
-  title: "LearnCode — See how your code actually runs",
+  name: "reify",
+  tagline: "Make code tangible.",
+  title: "reify — See what happens inside your code",
   description:
-    "Write your own JavaScript or TypeScript solution, run it, and step forward and backward through its real execution: variables, arrays, objects, call stacks and recursion, visualized from the actual run.",
+    "Write code. Watch variables change, functions execute, and data transform — one step at a time. A JavaScript and TypeScript execution visualizer that runs in your browser.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  /** Public repository and community links (set the env vars before deploying). */
+  github: process.env.NEXT_PUBLIC_GITHUB_URL ?? "https://github.com",
+  x: process.env.NEXT_PUBLIC_X_URL ?? "https://x.com",
+  discord: process.env.NEXT_PUBLIC_DISCORD_URL ?? "https://discord.com",
   keywords: [
     "code execution visualizer",
     "JavaScript visualizer",
     "TypeScript visualizer",
     "data structures and algorithms",
-    "DSA practice",
-    "recursion visualizer",
     "step through code",
-    "learn algorithms",
+    "learn programming",
+    "call stack visualizer",
+    "memory visualizer",
   ],
 } as const;
 

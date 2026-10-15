@@ -97,3 +97,27 @@ exceeded. Playback never re-runs user code.
    emitting the neutral events from `core/protocol`.
 2. Register them in `registry.ts` and describe the language in `catalog.ts`.
 3. Run the corpus through the shared differential harness for that language.
+
+## Test cases
+
+A test run reuses the compile step, then sends a `test` request to a fresh runtime worker.
+For each case the JavaScript runtime builds a new program instance (so cases cannot share
+state), evaluates the case's argument and expectation expressions in the program's scope,
+calls the chosen function and compares the return value (or the first argument, for
+in-place algorithms) with `deepEqual`. Budgets apply per case and no events are recorded
+(`TraceRecorder` with a `null` sink). Each result streams back as a `test-result` message;
+the machine keeps them in `context.testResults`. "Trace" on a case appends a call to the
+source and records an ordinary trace.
+
+## Complexity
+
+- **Static** (`languages/javascript/compiler/complexity.ts`): walks the type-stripped AST;
+  loops multiply by n (or log n when the range halves), calls inside loops multiply by the
+  callee's cost, linear built-ins (`includes`, `shift`, `slice`, ...) count as O(n),
+  `sort` as O(n log n), and recursion is classified by self-call count, halving arguments
+  and memoization. The result is a language-neutral `ComplexityClass` with notes.
+- **Measured** (`core/analysis/complexity.ts`): each test result carries the operations
+  spent in the call and the input size n (elements, nodes and characters reachable from the
+  arguments, or the largest numeric argument). `estimateComplexity` fits
+  `steps ≈ a + b·f(n)` for each candidate class in log space and prefers the simpler class
+  when fits are close. It needs at least three sizes spanning a 4× range.

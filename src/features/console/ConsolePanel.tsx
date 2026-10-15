@@ -23,7 +23,7 @@ export function ConsolePanel({
       {lines.map((line, index) => (
         <li
           key={index}
-          className={`border-b border-border/60 px-3 py-1 whitespace-pre-wrap ${LEVEL_CLASS[line.level]} ${
+          className={`px-4 py-0.5 whitespace-pre-wrap ${LEVEL_CLASS[line.level]} ${
             index >= visibleCount ? "opacity-35" : ""
           }`}
         >

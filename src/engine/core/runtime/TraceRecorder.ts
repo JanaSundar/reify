@@ -16,13 +16,28 @@ export class TraceRecorder {
   private stepCount = 0;
   private eventCount = 0;
   private depth = 0;
+  private peak = 0;
   private failure: ResourceLimitError | null = null;
   private closed = false;
 
+  /**
+   * @param sink receives event batches; pass `null` to count budgets without recording
+   *   events (used for test runs, where only results and operation counts matter).
+   */
   constructor(
     private readonly limits: ExecutionLimits,
-    private readonly sink: EventSink,
+    private readonly sink: EventSink | null,
   ) {}
+
+  /** False when events are not recorded; runtimes may then skip encoding work. */
+  get recording(): boolean {
+    return this.sink !== null;
+  }
+
+  /** Deepest call depth reached so far. */
+  get peakDepth(): number {
+    return this.peak;
+  }
 
   get steps(): number {
     return this.stepCount;
@@ -53,6 +68,7 @@ export class TraceRecorder {
 
   enterFrame(): void {
     this.depth += 1;
+    if (this.depth > this.peak) this.peak = this.depth;
     if (this.depth > this.limits.maxCallDepth) {
       this.fail(
         new ResourceLimitError(
@@ -69,7 +85,7 @@ export class TraceRecorder {
   }
 
   emit(event: TraceEvent): void {
-    if (this.closed || this.failure !== null) return;
+    if (this.sink === null || this.closed || this.failure !== null) return;
     if (this.eventCount >= this.limits.maxEvents) {
       this.fail(
         new ResourceLimitError(
@@ -95,7 +111,7 @@ export class TraceRecorder {
   }
 
   flush(): void {
-    if (this.buffer.length === 0) return;
+    if (this.buffer.length === 0 || this.sink === null) return;
     const batch = this.buffer;
     this.buffer = [];
     this.sink(batch);

@@ -17,6 +17,7 @@ const PROGRAM: ProgramInfo = {
   locs: [{ line: 1, column: 0, endLine: 1, endColumn: 5, role: "statement", reads: [] }],
   bindings: [],
   warnings: [],
+  complexity: null,
 };
 
 const setup = () => {
@@ -26,6 +27,8 @@ const setup = () => {
   const coordinator = new ExecutionCoordinator(workers, store, DEFAULT_LIMITS, scheduler);
   const callbacks: RunCallbacks = {
     onProgress: vi.fn<RunCallbacks["onProgress"]>(),
+    onCompiled: vi.fn<RunCallbacks["onCompiled"]>(),
+    onTestResult: vi.fn<RunCallbacks["onTestResult"]>(),
     onComplete: vi.fn<RunCallbacks["onComplete"]>(),
     onError: vi.fn<RunCallbacks["onError"]>(),
     onCancelled: vi.fn<RunCallbacks["onCancelled"]>(),
@@ -290,5 +293,59 @@ describe("execution machine", () => {
     expect(status()).toBe("idle");
     expect(workers.executing[0]!.terminated).toBe(true);
     expect(store.getSnapshot().status).toBe("empty");
+  });
+});
+
+describe("test runs", () => {
+  const suite = {
+    entry: "f",
+    target: "return" as const,
+    cases: [{ id: "a", args: "1", expected: "1" }],
+  };
+  const result = {
+    caseId: "a",
+    status: "pass" as const,
+    actual: "1",
+    expected: "1",
+    message: null,
+    steps: 3,
+    maxDepth: 1,
+    inputSize: 1,
+    ms: 0,
+  };
+
+  it("sends a test request, streams results into the machine and leaves the trace alone", () => {
+    const { actor, workers, store, status } = startMachine();
+    actor.send({
+      type: "RUN",
+      source: "function f(x) { return x; }",
+      languageId: "javascript",
+      suite,
+    });
+    compiled(workers.compilers[0]!, 1);
+    const runtime = workers.executing[0]!;
+    expect(runtime.posted[0]).toMatchObject({ type: "test", runId: 1, suite });
+    runtime.emit({ type: "test-result", runId: 1, result });
+    runtime.emit({ type: "test-result", runId: 99, result: { ...result, caseId: "stale" } });
+    runtime.emit({
+      type: "done",
+      runId: 1,
+      outcome: { kind: "ok" },
+      steps: 3,
+      events: 0,
+      executeMs: 1,
+    });
+    expect(status()).toBe("completed");
+    expect(actor.getSnapshot().context.testResults).toEqual([result]);
+    expect(store.getSnapshot().status).toBe("empty");
+  });
+
+  it("keeps test results while a single case is traced", () => {
+    const { actor, workers } = startMachine();
+    actor.send({ type: "RUN", source: "x", languageId: "javascript", suite });
+    compiled(workers.compilers[0]!, 1);
+    workers.executing[0]!.emit({ type: "test-result", runId: 1, result });
+    actor.send({ type: "RUN", source: "x", languageId: "javascript" });
+    expect(actor.getSnapshot().context.testResults).toEqual([result]);
   });
 });

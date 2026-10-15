@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
-import { parseExecuteRequest, type RuntimeWorkerMessage } from "../core/protocol/messages";
+import { parseRuntimeRequest, type RuntimeWorkerMessage } from "../core/protocol/messages";
 import { lockdownGlobals } from "../core/runtime/lockdown";
 import { loadRuntime } from "../languages/registry";
-import { handleExecute } from "./handlers";
+import { handleRuntimeRequest } from "./handlers";
 
 /**
  * Single-use worker that executes one instrumented program. Capabilities used by the
@@ -17,10 +17,10 @@ void loadRuntime("javascript");
 
 let used = false;
 scope.onmessage = (event: MessageEvent<unknown>) => {
-  const request = parseExecuteRequest(event.data);
+  const request = parseRuntimeRequest(event.data);
   if (!request || used) return;
   used = true;
-  void handleExecute(request, {
+  void handleRuntimeRequest(request, {
     post: (message: RuntimeWorkerMessage, transfer: ArrayBuffer[]) =>
       postMessage(message, transfer),
     now,

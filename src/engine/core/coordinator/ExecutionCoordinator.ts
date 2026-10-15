@@ -5,7 +5,7 @@ import {
   parseRuntimeMessage,
   type CompileRequest,
   type CompileResponse,
-  type ExecuteRequest,
+  type RuntimeRequest,
   type RuntimeWorkerMessage,
 } from "../protocol/messages";
 import {
@@ -14,7 +14,8 @@ import {
   type RunOutcome,
   type RunStats,
 } from "../protocol/limits";
-import type { Diagnostic } from "../protocol/program";
+import type { Diagnostic, ProgramInfo } from "../protocol/program";
+import type { TestResult, TestSuite } from "../protocol/testing";
 import type { TraceStore } from "../trace/TraceStore";
 
 /** The subset of `Worker` the coordinator relies on (fakes implement it in tests). */
@@ -48,6 +49,8 @@ export interface RunRequest {
   readonly runId: number;
   readonly languageId: string;
   readonly source: string;
+  /** When present, the run executes these test cases instead of recording a trace. */
+  readonly suite?: TestSuite;
 }
 
 export type RunPhase = "compiling" | "executing";
@@ -65,6 +68,9 @@ export type RunFailure =
 
 export interface RunCallbacks {
   onProgress(progress: RunProgress): void;
+  /** The program compiled; its static information (e.g. complexity) is available. */
+  onCompiled(program: ProgramInfo): void;
+  onTestResult(result: TestResult): void;
   onComplete(outcome: RunOutcome, stats: RunStats): void;
   onError(failure: RunFailure): void;
   onCancelled(): void;
@@ -192,8 +198,11 @@ export class ExecutionCoordinator {
       run.callbacks.onError({ kind: "compile", diagnostics: result.diagnostics });
       return;
     }
-    this.store.begin(run.request.runId, result.program, run.request.source);
-    run.traceStarted = true;
+    run.callbacks.onCompiled(result.program);
+    if (!run.request.suite) {
+      this.store.begin(run.request.runId, result.program, run.request.source);
+      run.traceStarted = true;
+    }
     this.execute(run, result.code);
   }
 
@@ -211,13 +220,10 @@ export class ExecutionCoordinator {
     worker.onerror = (event) =>
       this.fail(run, `Execution worker failed: ${event.message ?? "unknown error"}`);
 
-    const request: ExecuteRequest = {
-      type: "execute",
-      runId: run.request.runId,
-      languageId: run.request.languageId,
-      code,
-      limits: this.limits,
-    };
+    const { runId, languageId, suite } = run.request;
+    const request: RuntimeRequest = suite
+      ? { type: "test", runId, languageId, code, suite, limits: this.limits }
+      : { type: "execute", runId, languageId, code, limits: this.limits };
     worker.postMessage(request);
     run.callbacks.onProgress({ phase: "executing", steps: 0, events: 0 });
     // Warm the next runtime worker while this one executes.
@@ -243,12 +249,17 @@ export class ExecutionCoordinator {
         this.reportProgress(run);
         return;
       }
+      case "test-result":
+        run.callbacks.onTestResult(message.result);
+        return;
       case "done": {
-        this.store.finish(
-          run.request.runId,
-          message.outcome,
-          this.statsOf(run, message.steps, message.executeMs),
-        );
+        if (run.traceStarted) {
+          this.store.finish(
+            run.request.runId,
+            message.outcome,
+            this.statsOf(run, message.steps, message.executeMs),
+          );
+        }
         this.finishRun(run);
         run.callbacks.onComplete(
           message.outcome,
@@ -301,7 +312,7 @@ export class ExecutionCoordinator {
       message: `Execution took longer than ${this.limits.timeoutMs / 1000} s and was stopped.`,
     };
     const stats = this.statsOf(run, this.store.stepCount, this.limits.timeoutMs);
-    this.store.finish(run.request.runId, outcome, stats);
+    if (run.traceStarted) this.store.finish(run.request.runId, outcome, stats);
     this.finishRun(run);
     run.callbacks.onComplete(outcome, stats);
   }

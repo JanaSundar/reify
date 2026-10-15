@@ -1,6 +1,7 @@
 import type { TraceRecorder } from "../core/runtime/TraceRecorder";
 import type { ExecutionLimits, RunOutcome } from "../core/protocol/limits";
 import type { CompileResult } from "../core/protocol/messages";
+import type { TestCase, TestResult, TestSuite } from "../core/protocol/testing";
 
 /**
  * A language plugs into the platform with two halves that run in different workers:
@@ -20,6 +21,8 @@ export interface LanguageRuntime {
    * failure is reported through the returned outcome.
    */
   execute(code: string, recorder: TraceRecorder, limits: ExecutionLimits): RunOutcome;
+  /** Runs one test case against a fresh program instance. Must not throw. */
+  runTest(code: string, suite: TestSuite, testCase: TestCase, limits: ExecutionLimits): TestResult;
 }
 
 /** UI-facing description of a language (safe to import on the main thread). */

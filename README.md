@@ -11,8 +11,11 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000/playground. Run with **Ctrl/Cmd + Enter**, cancel with **Esc**, and step
-with **Alt + ← / →** (Alt + Home / End jumps to the first or last step).
+Open http://localhost:3000/playground. Run with **Ctrl/Cmd + Enter**, run tests with **Ctrl/Cmd + Shift + Enter**,
+cancel with **Esc**, toggle the console with **Ctrl/Cmd + `**, and step with **Alt + ← / →**.
+
+The Tests tab runs your function against cases (arguments and expected value as JavaScript); the
+Complexity tab shows an estimate from the code and a curve fitted to measured test runs.
 
 ## Scripts
 
@@ -31,4 +34,3 @@ with **Alt + ← / →** (Alt + Home / End jumps to the first or last step).
 - [Execution safety](docs/security.md): guarantees and limitations
 - [Performance baselines](docs/performance.md)
 - [ADR 0001](docs/adr/0001-nextjs-workers-babel.md): Next.js, workers, Babel
-- Supported language subset: `/docs/javascript` in the app (`src/content/supportedJavascript.ts`)

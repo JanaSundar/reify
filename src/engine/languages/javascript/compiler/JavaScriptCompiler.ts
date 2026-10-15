@@ -3,6 +3,7 @@ import { pointRange, type Diagnostic } from "../../../core/protocol/program";
 import type { LanguageCompiler } from "../../types";
 import { babelTransform, babelTransformFromAst, type BabelTypes, type PluginObject } from "./babel";
 import { normalizeVisitor, unsupportedVisitor } from "./checks";
+import { analyzeComplexity } from "./complexity";
 import { Instrumenter } from "./instrument";
 import { BindingTable, DiagnosticLog, LocTable } from "./tables";
 
@@ -74,6 +75,8 @@ export class JavaScriptCompiler implements LanguageCompiler {
     }
     if (!ast) return { ok: false, diagnostics: [internalDiagnostic("no AST produced")] };
 
+    // Analyse the type-stripped original before instrumentation rewrites it.
+    const complexity = analyzeComplexity(ast.program);
     const locs = new LocTable();
     const bindings = new BindingTable();
     const log = new DiagnosticLog();
@@ -103,6 +106,7 @@ export class JavaScriptCompiler implements LanguageCompiler {
         locs: locs.locs,
         bindings: bindings.bindings,
         warnings: log.warnings,
+        complexity,
       },
     };
   }

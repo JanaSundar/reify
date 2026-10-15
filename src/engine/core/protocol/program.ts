@@ -1,3 +1,5 @@
+import type { StaticComplexity } from "../analysis/complexity";
+
 /**
  * Static information about a compiled program, produced by a language compiler.
  * Trace events refer to entries in these tables by index to keep events compact.
@@ -56,6 +58,8 @@ export interface ProgramInfo {
   readonly bindings: readonly BindingInfo[];
   /** Non-fatal diagnostics (constructs that are executed but only partially traced). */
   readonly warnings: readonly Diagnostic[];
+  /** Compile-time complexity estimate, when the language provides one. */
+  readonly complexity: StaticComplexity | null;
 }
 
 export const pointRange = (line: number, column: number): SourceRange => ({

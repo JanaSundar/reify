@@ -22,6 +22,7 @@ import {
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { SourceRange } from "@/engine/core/protocol/program";
 import { syntaxColors } from "./highlight";
+import { breakpointGutter, setBreakpoints } from "./breakpoints";
 import { executionLine, executionMarkEffects, type ExecutionMark } from "./executionLine";
 
 export interface EditorDiagnostic {
@@ -35,6 +36,8 @@ interface CodeEditorProps {
   readonly typescript: boolean;
   readonly execution: ExecutionMark | null;
   readonly diagnostics: readonly EditorDiagnostic[];
+  readonly breakpoints: readonly number[];
+  readonly onToggleBreakpoint: (line: number) => void;
   readonly onChange: (value: string) => void;
   readonly onRun: () => void;
   readonly onCancel: () => boolean;
@@ -72,6 +75,8 @@ export function CodeEditor({
   typescript,
   execution,
   diagnostics,
+  breakpoints,
+  onToggleBreakpoint,
   onChange,
   onRun,
   onCancel,
@@ -79,15 +84,16 @@ export function CodeEditor({
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
-  const callbacks = useRef({ onChange, onRun, onCancel });
+  const callbacks = useRef({ onChange, onRun, onCancel, onToggleBreakpoint });
   useLayoutEffect(() => {
-    callbacks.current = { onChange, onRun, onCancel };
+    callbacks.current = { onChange, onRun, onCancel, onToggleBreakpoint };
   });
 
   useEffect(() => {
     const state = EditorState.create({
       doc: initialValue,
       extensions: [
+        breakpointGutter((line) => callbacks.current.onToggleBreakpoint(line)),
         lineNumbers(),
         highlightActiveLineGutter(),
         history(),
@@ -141,6 +147,10 @@ export function CodeEditor({
     if (editor)
       editor.dispatch(setDiagnostics(editor.state, toCmDiagnostics(editor.state.doc, diagnostics)));
   }, [diagnostics]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setBreakpoints.of(breakpoints) });
+  }, [breakpoints]);
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />;
 }
