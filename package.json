@@ -2,7 +2,7 @@
   "name": "learncode",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://github.com/JanaSundar/reify#readme",
+  "homepage": "https://tryreify.vercel.app",
   "bugs": {
     "url": "https://github.com/JanaSundar/reify/issues"
   },
@@ -23,7 +23,8 @@
     "test:watch": "vitest",
     "bench": "vitest run --mode bench",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@babel/standalone": "^8.0.7",
@@ -55,6 +56,7 @@
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "fast-check": "^4.10.2",
+    "lefthook": "^2.2.2",
     "oxfmt": "^0.73.0",
     "oxlint": "^1.88.0",
     "sharp": "^0.35.5",
