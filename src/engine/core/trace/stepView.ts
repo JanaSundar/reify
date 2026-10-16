@@ -1,6 +1,11 @@
 import { EventKind, isStepBoundary, type FrameId, type TraceEvent } from "../protocol/events";
 import type { BindingId, BindingKind, LocInfo, ProgramInfo } from "../protocol/program";
-import type { EncodedValue, HeapId, HeapObject } from "../protocol/values";
+import {
+  cloneHeapObject,
+  type EncodedValue,
+  type HeapId,
+  type HeapObject,
+} from "../protocol/values";
 import { previewValue } from "./describe";
 import { applyEvent, frameHolding, readBinding, type RuntimeState } from "./state";
 
@@ -23,6 +28,14 @@ export interface FrameView {
 
 /** Heap slots touched in this step: `all` when the object was (re)captured as a whole. */
 export type HeapChange = "all" | ReadonlySet<number | string>;
+
+/** How a heap object changed in this step: its state before the step and the operation. */
+export interface HeapMutation {
+  /** The object as it was before this step, or null when it first appeared during it. */
+  readonly before: HeapObject | null;
+  /** Mutating operation (`push`, `set`, `add`, ...), or `write` for slot assignments. */
+  readonly op: string;
+}
 
 export type FactKind =
   | "line"
@@ -53,6 +66,7 @@ export interface StepView {
   readonly closures: readonly VariableView[];
   readonly heap: ReadonlyMap<HeapId, HeapObject>;
   readonly heapChanges: ReadonlyMap<HeapId, HeapChange>;
+  readonly mutations: ReadonlyMap<HeapId, HeapMutation>;
   readonly consoleCount: number;
   readonly facts: readonly Fact[];
 }
@@ -100,6 +114,12 @@ export const buildStepView = (
 ): StepView => {
   const previous = new Map<string, EncodedValue | null>();
   const heapChanges = new Map<HeapId, HeapChange>();
+  const mutations = new Map<HeapId, HeapMutation>();
+  const recordMutation = (id: HeapId, op: string): void => {
+    if (mutations.has(id)) return;
+    const before = state.heap.get(id);
+    mutations.set(id, { before: before ? cloneHeapObject(before) : null, op });
+  };
   const facts: Fact[] = [];
   const show = (value: EncodedValue): string => previewValue(value, state.heap);
   const label = (id: HeapId): string => objectLabel(state, program, id);
@@ -118,10 +138,14 @@ export const buildStepView = (
       }
     }
     if (event.k === EventKind.Write) {
+      recordMutation(event.id, "write");
       const current = heapChanges.get(event.id);
       if (current !== "all") heapChanges.set(event.id, new Set([...(current ?? []), event.key]));
     }
-    if (event.k === EventKind.Heap && event.via) heapChanges.set(event.o.id, "all");
+    if (event.k === EventKind.Heap && event.via) {
+      recordMutation(event.o.id, event.via.op);
+      heapChanges.set(event.o.id, "all");
+    }
 
     applyEvent(state, event, program);
     const fact = describeEvent(event, program, show, label);
@@ -162,6 +186,7 @@ export const buildStepView = (
     ),
     heap: state.heap,
     heapChanges,
+    mutations,
     consoleCount: state.consoleCount,
     facts,
   };

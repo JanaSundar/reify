@@ -13,6 +13,7 @@ const comparable = (view: StepView | null) =>
     heap: [...view.heap].toSorted(([a], [b]) => a - b),
     console: view.consoleCount,
     facts: view.facts,
+    mutations: [...view.mutations].toSorted(([a], [b]) => a - b),
   };
 
 const makeStore = (

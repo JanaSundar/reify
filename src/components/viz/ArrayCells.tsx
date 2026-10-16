@@ -2,13 +2,10 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
+import { SWAP_SCALE } from "@/components/motion";
+import { TONE } from "@/components/tones";
 
 export type CellTone = "blue" | "violet";
-
-const TONE: Record<CellTone, string> = {
-  blue: "bg-[var(--blue-cell)] shadow-[inset_0_0_0_1px_var(--blue-line)]",
-  violet: "bg-violet-soft shadow-[inset_0_0_0_1px_var(--violet-line)]",
-};
 
 interface ArrayCellsProps {
   readonly cells: readonly ReactNode[];
@@ -53,9 +50,7 @@ export function ArrayCells({
                 {filled && (
                   <motion.span
                     key="value"
-                    initial={{ opacity: 0, scale: 0.6 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
+                    {...SWAP_SCALE}
                     transition={{ type: "spring", duration: 0.35, bounce: 0.2 }}
                   >
                     {cells[index]}

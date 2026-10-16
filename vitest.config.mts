@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     // `pnpm bench` runs the benchmark files instead of the test suite.
-    include: mode === "bench" ? ["tests/**/*.bench.ts"] : ["tests/**/*.test.ts"],
+    include: mode === "bench" ? ["tests/**/*.bench.ts"] : ["tests/**/*.test.{ts,tsx}"],
     environment: "node",
     testTimeout: mode === "bench" ? 600_000 : 5_000,
   },

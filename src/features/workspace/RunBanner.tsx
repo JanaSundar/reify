@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { RunFailure } from "@/engine/core/coordinator/ExecutionCoordinator";
 import type { RunOutcome } from "@/engine/core/protocol/limits";
 import type { ProgramInfo } from "@/engine/core/protocol/program";
+import { easeOut } from "@/components/motion";
 
 type Tone = "danger" | "warning" | "muted";
 
@@ -80,7 +81,7 @@ export function RunBanner({ message }: { message: BannerMessage | null }) {
           initial={reduceMotion ? false : { opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, transition: { duration: 0.12 } }}
-          transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+          transition={easeOut(0.18)}
           className={`mx-3 mt-3 rounded-xl px-3.5 py-2.5 text-sm ${TONE_CLASS[message.tone]}`}
         >
           <p className="font-medium">{message.title}</p>

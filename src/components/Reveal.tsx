@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, type HTMLMotionProps } from "motion/react";
+import { easeOut } from "@/components/motion";
 
 interface RevealProps extends HTMLMotionProps<"div"> {
   /** Seconds to wait after entering the viewport (for staggering siblings). */
@@ -10,7 +11,6 @@ interface RevealProps extends HTMLMotionProps<"div"> {
   readonly duration?: number;
 }
 
-const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const LIFT = { y: 30 } as const;
 
 /** Fades content into place once, when it scrolls into view. */
@@ -26,7 +26,7 @@ export function Reveal({
       initial={{ opacity: 0, x: from.x ?? 0, y: from.y ?? 0, scale: from.scale ?? 1 }}
       whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       viewport={{ once: true, margin: "0px 0px -10% 0px" }}
-      transition={{ duration, delay, ease: EASE_OUT }}
+      transition={easeOut(duration, delay)}
       {...props}
     >
       {children}

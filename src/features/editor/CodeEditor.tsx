@@ -39,6 +39,9 @@ interface CodeEditorProps {
   readonly breakpoints: readonly number[];
   readonly onToggleBreakpoint: (line: number) => void;
   readonly onChange: (value: string) => void;
+  /** Longest document the editor accepts; edits that would exceed it are rejected. */
+  readonly maxLength: number;
+  readonly onLimit: () => void;
   readonly onRun: () => void;
   readonly onCancel: () => boolean;
 }
@@ -78,21 +81,30 @@ export function CodeEditor({
   breakpoints,
   onToggleBreakpoint,
   onChange,
+  maxLength,
+  onLimit,
   onRun,
   onCancel,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
-  const callbacks = useRef({ onChange, onRun, onCancel, onToggleBreakpoint });
+  const callbacks = useRef({ onChange, onLimit, onRun, onCancel, onToggleBreakpoint });
   useLayoutEffect(() => {
-    callbacks.current = { onChange, onRun, onCancel, onToggleBreakpoint };
+    callbacks.current = { onChange, onLimit, onRun, onCancel, onToggleBreakpoint };
   });
 
   useEffect(() => {
     const state = EditorState.create({
       doc: initialValue,
       extensions: [
+        // Deleting is always allowed; growing past the limit is refused (and reported).
+        EditorState.changeFilter.of((tr) => {
+          if (!tr.docChanged || tr.newDoc.length <= Math.max(maxLength, tr.startState.doc.length))
+            return true;
+          callbacks.current.onLimit();
+          return false;
+        }),
         breakpointGutter((line) => callbacks.current.onToggleBreakpoint(line)),
         lineNumbers(),
         highlightActiveLineGutter(),

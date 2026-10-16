@@ -2,8 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { SITE } from "@/lib/site";
 
-/** The official full logo (852 × 263), one file per theme. */
-const LOGO_RATIO = 852 / 263;
+/** The official full logo (271 × 101), one file per theme. */
+const LOGO_RATIO = 271 / 101;
 
 /**
  * The reify logo, linking home. Both theme variants are rendered and CSS shows the one that

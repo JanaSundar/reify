@@ -8,11 +8,11 @@ import { Inspector } from "@/features/inspector/Inspector";
 import { MiniCode } from "./MiniCode";
 import type { CompiledPreview } from "./previewProgram";
 import { recordPreview } from "./recordPreview";
+import { easeOut, SWAP_Y } from "@/components/motion";
 
 const STEP_MS = 1100;
 /** Pause on the last step before looping, so the result can be read. */
 const END_PAUSE_MS = 2400;
-const EASE = [0.23, 1, 0.32, 1] as const;
 
 const pane = "glass-pane rounded-2xl";
 const iconButton =
@@ -157,7 +157,7 @@ export function PlaygroundPreview({ preview }: { preview: CompiledPreview }) {
           <motion.span
             className="absolute left-2 h-[2px] rounded-full bg-accent"
             animate={{ width: `calc((100% - 16px) * ${position / Math.max(1, last)})` }}
-            transition={{ duration: 0.3, ease: EASE }}
+            transition={easeOut(0.3)}
           />
           {Array.from({ length: total }, (_, index) => (
             <button
@@ -178,14 +178,7 @@ export function PlaygroundPreview({ preview }: { preview: CompiledPreview }) {
 
         <div className="w-full min-w-0 text-[12.5px] sm:w-72">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.p
-              key={position}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.16, ease: EASE }}
-              className="truncate"
-            >
+            <motion.p key={position} {...SWAP_Y} transition={easeOut(0.16)} className="truncate">
               <span className="font-medium text-ink">{event?.label}</span>{" "}
               <code className="font-mono text-[12px] text-muted">{event?.detail}</code>
             </motion.p>

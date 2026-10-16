@@ -14,9 +14,9 @@ const logo = `data:image/png;base64,${await readFile(
   "base64",
 )}`;
 
-/** Logo aspect ratio of the official artwork (852 × 263). */
-const LOGO_WIDTH = 480;
-const LOGO_HEIGHT = Math.round((LOGO_WIDTH * 263) / 852);
+/** Logo aspect ratio of the official artwork (271 × 101). */
+const LOGO_WIDTH = 560;
+const LOGO_HEIGHT = Math.round((LOGO_WIDTH * 101) / 271);
 
 export default function OpenGraphImage() {
   return new ImageResponse(

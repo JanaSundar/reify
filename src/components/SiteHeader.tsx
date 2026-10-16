@@ -10,10 +10,9 @@ import { buttonClass } from "./buttonStyles";
 import { GitHubIcon } from "./BrandIcons";
 import { Logo } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
+import { easeOut } from "@/components/motion";
 
 export const NAV = [{ href: "/playground", label: "Playground" }] as const;
-
-const EASE = [0.23, 1, 0.32, 1] as const;
 
 /**
  * The one site header, shared by the landing page and the playground. `page` is sticky and
@@ -52,7 +51,7 @@ export function SiteHeader({ variant = "page" }: { variant?: "page" | "app" }) {
                 className="relative flex items-center"
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 + index * 0.05, ease: EASE }}
+                transition={easeOut(0.4, 0.1 + index * 0.05)}
               >
                 <Link
                   href={item.href}
@@ -102,7 +101,7 @@ export function SiteFooter() {
       initial={{ opacity: 0 }}
       whileInView={{ opacity: 1 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.6, ease: EASE }}
+      transition={easeOut(0.6)}
       className="mt-auto"
     >
       {/* Three equal-width outer columns keep the credit exactly centred. */}

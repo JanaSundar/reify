@@ -4,6 +4,7 @@ import { Moon, Sun } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useSyncExternalStore } from "react";
 import { applyTheme, readTheme, subscribeTheme, type Theme } from "./theme";
+import { easeOut } from "@/components/motion";
 
 /** Null on the server: the theme is only known in the browser. */
 const useTheme = (): Theme | null => useSyncExternalStore(subscribeTheme, readTheme, () => null);
@@ -28,7 +29,7 @@ export function ThemeToggle() {
             initial={{ rotate: -90, opacity: 0, scale: 0.6 }}
             animate={{ rotate: 0, opacity: 1, scale: 1 }}
             exit={{ rotate: 90, opacity: 0, scale: 0.6 }}
-            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+            transition={easeOut(0.22)}
             className="grid place-items-center"
           >
             <Icon size={17} strokeWidth={1.8} />

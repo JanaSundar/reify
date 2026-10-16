@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { easeOut } from "@/components/motion";
 
 interface InlineConfirmProps {
   readonly message: string;
@@ -24,14 +25,14 @@ export function InlineConfirm({ message, confirmLabel, onConfirm, onCancel }: In
       aria-label={message}
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
+      transition={easeOut(0.16)}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
           onCancel();
         }
       }}
-      className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--border)]"
+      className="rounded-lg bg-surface-2 px-3 py-2 text-[12.5px] edge"
     >
       <p className="text-text">{message}</p>
       <div className="mt-2 flex gap-1.5">

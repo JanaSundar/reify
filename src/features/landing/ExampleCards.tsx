@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Reveal } from "@/components/Reveal";
 import { ArrayCells, TypeTag } from "@/components/viz/ArrayCells";
 import { MiniCode } from "./MiniCode";
+import { TONE } from "@/components/tones";
 
 interface CardProps {
   readonly exampleId: string;
@@ -77,7 +78,9 @@ function ArrayExample() {
       </Labeled>
       <div className="flex flex-col items-center pl-14">
         <span className="h-3 w-px bg-accent/50" />
-        <span className="rounded-md bg-violet-soft px-2.5 py-0.5 font-mono text-[11px] text-violet shadow-[inset_0_0_0_1px_var(--violet-line)]">
+        <span
+          className={`rounded-md px-2.5 py-0.5 font-mono text-[11px] text-violet ${TONE.violet}`}
+        >
           map(n =&gt; n * n)
         </span>
         <span className="h-3 w-px bg-accent/50" />
@@ -96,7 +99,7 @@ function CallStackExample() {
     { label: "result", detail: "8", tone: "plain" },
   ] as const;
   return (
-    <div className="rounded-xl p-3 shadow-[inset_0_0_0_1px_var(--border)]">
+    <div className="rounded-xl p-3 edge">
       <p className="flex items-center gap-1.5 text-[12px] font-medium text-ink">
         <span className="size-2.5 rounded-full border-[1.5px] border-ink" /> Call Stack
       </p>
@@ -112,9 +115,7 @@ function CallStackExample() {
             />
             <div
               className={`rounded-lg px-3 py-1.5 font-mono text-[11px] ${
-                frame.tone === "violet"
-                  ? "bg-violet-soft text-violet shadow-[inset_0_0_0_1px_var(--violet-line)]"
-                  : "text-text shadow-[inset_0_0_0_1px_var(--border)]"
+                frame.tone === "violet" ? `${TONE.violet} text-violet` : "text-text edge"
               }`}
             >
               <p>{frame.label}</p>
@@ -149,7 +150,7 @@ function ReferenceExample() {
         <path d="M30 0 V12 Q30 18 40 18 H160 Q170 18 170 12 V0" fill="none" stroke="currentColor" />
         <path d="M100 18 V30" stroke="currentColor" />
       </svg>
-      <span className="rounded-md bg-accent-soft px-3 py-1 text-center font-mono text-[11px] leading-4 text-accent shadow-[inset_0_0_0_1px_var(--blue-line)]">
+      <span className="rounded-md bg-accent-soft px-3 py-1 text-center font-mono text-[11px] leading-4 text-accent edge-blue">
         Same reference
         <br />
         in memory

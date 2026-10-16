@@ -1,6 +1,8 @@
-import { previewValue } from "@/engine/core/trace/describe";
+import { previewValue, sizedTypeName } from "@/engine/core/trace/describe";
+import { variablesByObject } from "@/engine/core/trace/references";
 import type { FrameView, StepView, VariableView } from "@/engine/core/trace/stepView";
 import type { EncodedValue, HeapId, HeapObject } from "@/engine/core/protocol/values";
+import { valueIdentity } from "@/features/viz/keys";
 
 type Heap = ReadonlyMap<HeapId, HeapObject>;
 
@@ -13,17 +15,12 @@ export const typeLabel = (value: EncodedValue, heap: Heap): string => {
   if (!object) return "object";
   switch (object.kind) {
     case "list":
-      return `Array(${object.items.length + (object.omitted ?? 0)})`;
     case "map":
     case "set":
-      return `${object.typeName}(${(object.kind === "map" ? object.entries.length : object.items.length) + (object.omitted ?? 0)})`;
-    case "record":
-      return "Object";
-    case "instance":
-      return object.typeName;
+      return sizedTypeName(object);
     case "callable":
       return "function";
-    case "opaque":
+    default:
       return object.typeName;
   }
 };
@@ -47,42 +44,12 @@ export interface FlowVariable {
   readonly variable: VariableView;
   /** Other variable names pointing at the same object (aliasing). */
   readonly sharedWith: readonly string[];
-  /** List indices written in this step. */
-  readonly changedCells: readonly number[];
-  /** Item previews, for arrays of primitives. */
-  readonly cells: readonly string[];
+  /** The variable or the object it references changed in this step. */
+  readonly changed: boolean;
 }
 
-const MAX_CELLS = 64;
-
-const cellsOf = (value: EncodedValue, heap: Heap): string[] => {
-  const object = value.kind === "ref" ? heap.get(value.id) : undefined;
-  return object?.kind === "list"
-    ? object.items.slice(0, MAX_CELLS).map((item) => previewValue(item, heap))
-    : [];
-};
-
-const changedCells = (view: StepView, value: EncodedValue): number[] => {
-  if (value.kind !== "ref") return [];
-  const change = view.heapChanges.get(value.id);
-  if (!change) return [];
-  if (change === "all") return [];
-  return [...change].filter((key): key is number => typeof key === "number");
-};
-
-const refOwners = (view: StepView): Map<HeapId, string[]> => {
-  const owners = new Map<HeapId, string[]>();
-  for (const frame of view.frames) {
-    for (const variable of frame.variables) {
-      if (variable.value.kind !== "ref") continue;
-      owners.set(variable.value.id, [...(owners.get(variable.value.id) ?? []), variable.name]);
-    }
-  }
-  return owners;
-};
-
 export const flowVariables = (view: StepView, frame: FrameView): FlowVariable[] => {
-  const owners = refOwners(view);
+  const owners = variablesByObject(view.frames);
   return frame.variables
     .filter((variable) => shapeOf(variable.value, view.heap) !== "function")
     .map((variable) => ({
@@ -96,8 +63,9 @@ export const flowVariables = (view: StepView, frame: FrameView): FlowVariable[] 
         variable.value.kind === "ref"
           ? (owners.get(variable.value.id) ?? []).filter((name) => name !== variable.name)
           : [],
-      changedCells: changedCells(view, variable.value),
-      cells: cellsOf(variable.value, view.heap),
+      changed:
+        variable.changed ||
+        (variable.value.kind === "ref" && view.heapChanges.has(variable.value.id)),
     }));
 };
 
@@ -109,6 +77,61 @@ export const activeCall = (view: StepView): string | null => {
     .filter((variable) => variable.kind === "param")
     .map((variable) => `${variable.name} = ${previewValue(variable.value, view.heap)}`);
   return `${frame.name}(${params.join(", ")})`;
+};
+
+/** The array cell the running call is working on. */
+export interface CallTarget {
+  readonly id: HeapId;
+  readonly index: number;
+  /** Why we know: e.g. `n = numbers[1]`. */
+  readonly reason: string;
+}
+
+const isIndex = (value: EncodedValue): number | null => {
+  if (value.kind !== "primitive" || value.type !== "number") return null;
+  const n = Number(value.text);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+/**
+ * The array element the running call received, when its parameters prove it: one parameter
+ * holds an index `k`, an earlier one holds exactly `array[k]` of an array visible to the
+ * the flow draws, i.e. a global (the `(element, index)` shape of `map`, `forEach`, ...). A parameter
+ * referencing the array itself disambiguates; anything still ambiguous returns null.
+ */
+export const callTarget = (view: StepView): CallTarget | null => {
+  if (view.frames.length < 2) return null;
+  const params = view.frames.at(-1)!.variables.filter((variable) => variable.kind === "param");
+  const arrays = new Map<HeapId, string>();
+  for (const variable of view.frames[0]!.variables) {
+    const { value } = variable;
+    if (value.kind === "ref" && view.heap.get(value.id)?.kind === "list" && !arrays.has(value.id))
+      arrays.set(value.id, variable.name);
+  }
+  const found = new Map<string, CallTarget & { direct: boolean }>();
+  params.forEach((indexParam, position) => {
+    const index = isIndex(indexParam.value);
+    if (index === null) return;
+    for (const element of params.slice(0, position)) {
+      for (const [id, name] of arrays) {
+        const object = view.heap.get(id);
+        const item = object?.kind === "list" ? object.items[index] : undefined;
+        if (!item || valueIdentity(item) !== valueIdentity(element.value)) continue;
+        found.set(`${id}:${index}`, {
+          id,
+          index,
+          reason: `${element.name} = ${name}[${index}]`,
+          direct: params.some((p) => p.value.kind === "ref" && p.value.id === id),
+        });
+      }
+    }
+  });
+  const all = [...found.values()];
+  const direct = all.filter((match) => match.direct);
+  const pick = direct.length > 0 ? direct : all;
+  if (pick.length !== 1) return null;
+  const { id, index, reason } = pick[0]!;
+  return { id, index, reason };
 };
 
 /** A one-sentence explanation of the step (backtick spans stripped). */

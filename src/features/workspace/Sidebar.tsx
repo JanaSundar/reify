@@ -19,6 +19,7 @@ import { InlineConfirm } from "@/components/InlineConfirm";
 import { Menu, type MenuItem } from "@/components/Menu";
 import { EXAMPLES } from "@/content/examples";
 import type { DocRef, WorkspaceFile } from "./files";
+import { easeOut } from "@/components/motion";
 
 interface SidebarProps {
   readonly files: readonly WorkspaceFile[];
@@ -30,8 +31,6 @@ interface SidebarProps {
   readonly onDelete: (id: string) => void;
   readonly onResetWorkspace: () => void;
 }
-
-const EASE = [0.23, 1, 0.32, 1] as const;
 
 function ItemButton({
   active,
@@ -51,7 +50,7 @@ function ItemButton({
       type="button"
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.25, ease: EASE, delay: index * 0.03 }}
+      transition={easeOut(0.25, index * 0.03)}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
@@ -127,7 +126,7 @@ function FileRow({
             setRenaming(false);
           }}
           onKeyDown={(event) => event.key === "Escape" && setRenaming(false)}
-          className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--accent)] outline-none"
+          className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
         />
       </form>
     );
@@ -222,7 +221,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
               type="button"
               aria-label="New file"
               title="New file"
-              className="press grid size-8 place-items-center rounded-lg text-ink shadow-[inset_0_0_0_1px_var(--border)] transition-[transform,background-color] hover:bg-surface-2 hover:scale-105"
+              className="press grid size-8 place-items-center rounded-lg text-ink edge transition-[transform,background-color] hover:bg-surface-2 hover:scale-105"
             >
               <Plus size={16} />
             </button>
@@ -245,7 +244,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
         </div>
       )}
 
-      <label className="mx-4 mt-4 flex h-9 items-center gap-2 rounded-lg px-2.5 shadow-[inset_0_0_0_1px_var(--border)] focus-within:shadow-[inset_0_0_0_1px_var(--accent)]">
+      <label className="mx-4 mt-4 flex h-9 items-center gap-2 rounded-lg px-2.5 edge">
         <Search size={14} className="text-faint" />
         <input
           ref={searchRef}
@@ -254,7 +253,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
           onKeyDown={(event) => event.key === "Escape" && setQuery("")}
           placeholder="Search files..."
           aria-label="Search files"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none! placeholder:text-faint"
         />
         <kbd className="text-[11px] text-faint">⌘K</kbd>
       </label>
@@ -283,7 +282,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
                 key={file.id}
                 layout
                 exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.18, ease: EASE }}
+                transition={easeOut(0.18)}
               >
                 <FileRow
                   file={file}
@@ -309,7 +308,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
         <button
           type="button"
           onClick={() => onNewFile()}
-          className="press group flex h-11 w-full items-center gap-2.5 rounded-xl px-3.5 text-[13.5px] font-medium text-ink shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover:bg-surface-2"
+          className="press group flex h-11 w-full items-center gap-2.5 rounded-xl px-3.5 text-[13.5px] font-medium text-ink edge transition-colors hover:bg-surface-2"
         >
           <Plus size={16} /> New File
           <ArrowRight

@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { easeOut } from "@/components/motion";
 
 const SHORTCUTS: ReadonlyArray<readonly [string, string]> = [
   ["Run", "Ctrl ↵"],
@@ -58,7 +59,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+            transition={easeOut(0.22)}
             onClick={(event) => event.stopPropagation()}
             className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-[0_0_0_1px_var(--border),0_30px_60px_-20px_var(--shadow-color)] outline-none"
           >

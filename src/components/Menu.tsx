@@ -11,6 +11,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { easeOut } from "@/components/motion";
 
 export interface MenuItem {
   readonly label: string;
@@ -86,7 +87,7 @@ export function Menu({ trigger, items, align = "start", side = "bottom", label }
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.1 } }}
-            transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+            transition={easeOut(0.15)}
             style={{ transformOrigin: origin }}
             className={`absolute z-50 min-w-48 rounded-xl bg-surface p-1 shadow-[0_0_0_1px_var(--border),0_16px_36px_-12px_var(--shadow-color)] ${
               side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5"

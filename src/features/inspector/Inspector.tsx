@@ -1,16 +1,20 @@
 "use client";
 
-import { ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
+import { DisclosureButton } from "@/components/DisclosureButton";
 import { Menu } from "@/components/Menu";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { previewValue } from "@/engine/core/trace/describe";
+import { variablesByObject } from "@/engine/core/trace/references";
 import type { StepView } from "@/engine/core/trace/stepView";
 import { flowVariables, type FlowVariable, type ValueShape } from "@/features/flow/flowModel";
 import { oneOf, usePreference } from "@/hooks/usePreference";
 import { InspectorProvider } from "./InspectorContext";
 import { ValueView } from "./ValueView";
+import { easeOut, FADE_UP, SWAP_Y } from "@/components/motion";
+import { TONE } from "@/components/tones";
 
 const TABS = ["variables", "stack", "memory"] as const;
 type InspectorTab = (typeof TABS)[number];
@@ -22,13 +26,21 @@ const FILTERS: ReadonlyArray<{ value: ValueShape | "all"; label: string }> = [
   { value: "primitive", label: "Primitives" },
 ];
 
-const EASE = [0.23, 1, 0.32, 1] as const;
-
 interface InspectorProps {
   readonly view: StepView | null;
   readonly focus: string | null;
   readonly onFocus: (name: string | null) => void;
   readonly onJumpToLine?: (line: number) => void;
+}
+
+/** Marks something the current step changed. */
+function ChangedDot({ className = "" }: { className?: string }) {
+  return (
+    <span
+      aria-label="changed"
+      className={`size-1.5 shrink-0 rounded-full bg-violet ${className}`}
+    />
+  );
 }
 
 function VariableItem({
@@ -41,7 +53,7 @@ function VariableItem({
   onFocus: (name: string | null) => void;
 }) {
   const [open, setOpen] = useState(item.shape === "array");
-  const changed = item.variable.changed || item.changedCells.length > 0;
+  const { changed } = item;
   return (
     <motion.li
       layout="position"
@@ -52,23 +64,18 @@ function VariableItem({
       className={`rounded-xl px-2.5 py-2 transition-colors ${focused ? "bg-violet-soft" : "hover:bg-surface-2"}`}
     >
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-label={open ? `Collapse ${item.name}` : `Expand ${item.name}`}
-          onClick={() => setOpen(!open)}
-          className="grid size-4 place-items-center text-ink"
-        >
-          {item.shape === "primitive" ? (
+        {item.shape === "primitive" ? (
+          <span className="grid size-4 place-items-center">
             <span className={`size-1.5 rounded-full ${changed ? "bg-violet" : "bg-ink"}`} />
-          ) : (
-            <ChevronRight
-              size={13}
-              className={`transition-transform duration-200 ${open ? "rotate-90" : ""}`}
-              fill="currentColor"
-            />
-          )}
-        </button>
+          </span>
+        ) : (
+          <DisclosureButton
+            open={open}
+            onToggle={() => setOpen(!open)}
+            label={item.name}
+            className="text-ink"
+          />
+        )}
         <button
           type="button"
           onClick={() => onFocus(focused ? null : item.name)}
@@ -77,23 +84,16 @@ function VariableItem({
         >
           <span className="truncate font-mono text-[13px] font-medium text-ink">{item.name}</span>
           <span className="shrink-0 font-mono text-[11px] text-faint">{item.type}</span>
-          {changed && (
-            <span
-              className="ml-auto size-1.5 shrink-0 rounded-full bg-violet"
-              aria-label="changed"
-            />
-          )}
+          {changed && <ChangedDot className="ml-auto" />}
         </button>
       </div>
       <div className="mt-1.5 pl-6">
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.code
             key={item.preview}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.18, ease: EASE }}
-            className="inline-block max-w-full truncate rounded-lg bg-surface px-2.5 py-1 font-mono text-[12px] text-text shadow-[inset_0_0_0_1px_var(--border)]"
+            {...SWAP_Y}
+            transition={easeOut(0.18)}
+            className="inline-block max-w-full truncate rounded-lg bg-surface px-2.5 py-1 font-mono text-[12px] text-text edge"
           >
             {item.preview}
           </motion.code>
@@ -127,7 +127,7 @@ function VariablesTab({ view, focus, onFocus }: InspectorProps & { view: StepVie
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-        <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 shadow-[inset_0_0_0_1px_var(--border)] focus-within:shadow-[inset_0_0_0_1px_var(--accent)]">
+        <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 edge focus-within:edge-accent">
           <Search size={14} className="shrink-0 text-faint" />
           <input
             value={query}
@@ -149,7 +149,7 @@ function VariablesTab({ view, focus, onFocus }: InspectorProps & { view: StepVie
             <button
               type="button"
               aria-label="Filter by type"
-              className={`press grid size-9 place-items-center rounded-lg shadow-[inset_0_0_0_1px_var(--border)] ${
+              className={`press grid size-9 place-items-center rounded-lg edge ${
                 filter !== "all" ? "text-accent" : "text-muted hover:text-ink"
               }`}
             >
@@ -225,7 +225,7 @@ function StackTab({
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2, ease: EASE }}
+            transition={easeOut(0.2)}
             className="relative"
           >
             <span
@@ -237,9 +237,7 @@ function StackTab({
               disabled={!frame.callLoc}
               onClick={() => frame.callLoc && onJumpToLine?.(frame.callLoc.line)}
               className={`w-full rounded-lg px-3 py-2 text-left font-mono text-[12.5px] ${
-                index === 0
-                  ? "bg-violet-soft text-violet shadow-[inset_0_0_0_1px_var(--violet-line)]"
-                  : "text-text shadow-[inset_0_0_0_1px_var(--border)] hover:bg-surface-2"
+                index === 0 ? `${TONE.violet} text-violet` : "text-text edge hover:bg-surface-2"
               }`}
             >
               {frame.name === "global" ? "global" : `${frame.name}()`}
@@ -256,13 +254,7 @@ function StackTab({
 }
 
 function MemoryTab({ view }: { view: StepView }) {
-  const owners = new Map<number, string[]>();
-  for (const frame of view.frames) {
-    for (const variable of frame.variables) {
-      if (variable.value.kind === "ref")
-        owners.set(variable.value.id, [...(owners.get(variable.value.id) ?? []), variable.name]);
-    }
-  }
+  const owners = variablesByObject(view.frames);
   const objects = [...view.heap.values()].filter(
     (object) => object.kind !== "callable" && owners.has(object.id),
   );
@@ -271,17 +263,12 @@ function MemoryTab({ view }: { view: StepView }) {
       {objects.map((object) => {
         const names = owners.get(object.id)!;
         return (
-          <li
-            key={object.id}
-            className="rounded-xl px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--border)]"
-          >
+          <li key={object.id} className="rounded-xl px-3 py-2.5 edge">
             <div className="flex items-center gap-2 font-mono text-[12px]">
               <span className="text-ink">
                 {object.typeName}#{object.id}
               </span>
-              {view.heapChanges.has(object.id) && (
-                <span className="size-1.5 rounded-full bg-violet" />
-              )}
+              {view.heapChanges.has(object.id) && <ChangedDot />}
               <span className="ml-auto truncate text-muted">← {names.join(", ")}</span>
             </div>
             <p className="mt-1 truncate font-mono text-[12px] text-text">
@@ -323,10 +310,8 @@ export function Inspector({ view, focus, onFocus, onJumpToLine }: InspectorProps
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={tab}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: EASE }}
+              {...FADE_UP}
+              transition={easeOut(0.15)}
               className="flex min-h-0 flex-1 flex-col"
             >
               {tab === "variables" && <VariablesTab view={view} focus={focus} onFocus={onFocus} />}

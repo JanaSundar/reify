@@ -15,12 +15,12 @@ import { useEffect, useRef, useState } from "react";
 import { Menu } from "@/components/Menu";
 import type { TraceStore } from "@/engine/core/trace/TraceStore";
 import { usePreference } from "@/hooks/usePreference";
+import { easeOut, FADE_UP, SWAP_SCALE } from "@/components/motion";
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
 const BASE_INTERVAL_MS = 420;
 /** Above this many steps the track is drawn as a line instead of individual dots. */
 const MAX_DOTS = 48;
-const EASE = [0.23, 1, 0.32, 1] as const;
 
 interface TimelineProps {
   readonly store: TraceStore;
@@ -126,10 +126,8 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.span
             key={isPlaying ? "pause" : "play"}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ duration: 0.15, ease: EASE }}
+            {...SWAP_SCALE}
+            transition={easeOut(0.15)}
           >
             {isPlaying ? (
               <Pause size={18} fill="currentColor" />
@@ -140,7 +138,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
         </AnimatePresence>
       </motion.button>
 
-      <div className="flex shrink-0 items-center gap-0.5 rounded-xl p-0.5 shadow-[inset_0_0_0_1px_var(--border)]">
+      <div className="flex shrink-0 items-center gap-0.5 rounded-xl p-0.5 edge">
         <IconButton
           label="First step (Alt+Home)"
           onClick={() => store.seek(0)}
@@ -185,7 +183,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
         <motion.div
           className="absolute top-1/2 left-0 h-[2px] -translate-y-1/2 rounded-full bg-accent"
           animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.25, ease: EASE }}
+          transition={easeOut(0.25)}
         />
         {total > 1 && total <= MAX_DOTS
           ? Array.from({ length: total }, (_, index) => (
@@ -204,7 +202,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
             aria-hidden
             className="absolute top-1/2 size-4 rounded-full border-[3px] border-accent bg-surface shadow-[0_0_0_4px_var(--accent-soft)]"
             animate={{ left: `${progress}%` }}
-            transition={{ duration: 0.25, ease: EASE }}
+            transition={easeOut(0.25)}
             style={{ x: "-50%", y: "-50%" }}
           />
         )}
@@ -221,9 +219,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
         <AnimatePresence>
           {hover && (
             <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
+              {...FADE_UP}
               transition={{ duration: 0.12 }}
               style={{ left: hover.x }}
               className="pointer-events-none absolute bottom-full mb-1 -translate-x-1/2 rounded-md bg-ink px-2 py-1 text-[11px] whitespace-nowrap text-bg tabular-nums"
@@ -243,7 +239,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
           <button
             type="button"
             aria-label={`Playback speed ${speed}x`}
-            className="press flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--border)] tabular-nums"
+            className="press flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] text-ink edge tabular-nums"
           >
             {speed}x <ChevronDown size={14} className="text-faint" />
           </button>
@@ -259,7 +255,7 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
         aria-label="Keyboard shortcuts (?)"
         title="Keyboard shortcuts (?)"
         onClick={onShowShortcuts}
-        className="press grid size-9 shrink-0 place-items-center rounded-lg text-ink shadow-[inset_0_0_0_1px_var(--border)]"
+        className="press grid size-9 shrink-0 place-items-center rounded-lg text-ink edge"
       >
         <Command size={15} />
       </button>
