@@ -12,8 +12,8 @@
     "url": "git+https://github.com/JanaSundar/reify.git"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "pnpm pyodide && next dev",
+    "build": "pnpm pyodide && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
@@ -24,6 +24,7 @@
     "bench": "vitest run --mode bench",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "icons": "node scripts/generate-icons.mjs",
+    "pyodide": "node scripts/copy-pyodide.mjs",
     "prepare": "lefthook install"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
     "motion": "^14.2.0",
     "next": "16.4.1",
     "posthog-js": "^1.438.10",
+    "pyodide": "314.0.7",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-resizable-panels": "^4.14.5",

@@ -45,3 +45,6 @@ next-env.d.ts
 # Downloaded agent skills (restored from skills-lock.json)
 .agents/
 .claude/skills/
+
+# Self-hosted Pyodide, copied from node_modules by scripts/copy-pyodide.mjs
+/public/pyodide/
