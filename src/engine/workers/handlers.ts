@@ -36,6 +36,7 @@ export const handleCompile = async (
       });
       return;
     }
+    post({ type: "ready", runId: request.runId });
     const result = compiler.compile(request.source);
     post({ type: "compiled", runId: request.runId, result, compileMs: now() - started });
   } catch (error) {
@@ -54,19 +55,36 @@ export interface RuntimeEnvironment {
   readonly lockdown: () => void;
 }
 
-/** Loads the runtime for a request, reporting an unknown language as a failure. */
+/**
+ * Loads the runtime for a request and reports `ready`, so the coordinator starts the
+ * execution budget only once loading is done. Unknown languages and failed loads are
+ * reported as failures.
+ */
 const runtimeFor = async (
   request: RuntimeRequest,
   env: RuntimeEnvironment,
 ): Promise<LanguageRuntime | null> => {
-  const runtime = await loadRuntime(request.languageId)?.catch(() => null);
-  if (!runtime) {
+  const { runId, languageId } = request;
+  const loading = loadRuntime(languageId);
+  if (!loading) {
+    env.post({ type: "failure", runId, message: `Unknown language: ${languageId}` }, []);
+    return null;
+  }
+  try {
+    const runtime = await loading;
+    env.post({ type: "ready", runId }, []);
+    return runtime;
+  } catch (error) {
     env.post(
-      { type: "failure", runId: request.runId, message: `Unknown language: ${request.languageId}` },
+      {
+        type: "failure",
+        runId,
+        message: `Could not load the ${languageId} runtime: ${errorText(error)}`,
+      },
       [],
     );
+    return null;
   }
-  return runtime ?? null;
 };
 
 /**

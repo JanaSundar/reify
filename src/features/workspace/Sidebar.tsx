@@ -18,6 +18,7 @@ import { forwardRef, useState } from "react";
 import { InlineConfirm } from "@/components/InlineConfirm";
 import { Menu, type MenuItem } from "@/components/Menu";
 import { EXAMPLES } from "@/content/examples";
+import { LANGUAGES } from "@/engine/languages/catalog";
 import type { DocRef, WorkspaceFile } from "./files";
 import { easeOut } from "@/components/motion";
 
@@ -182,8 +183,10 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
   const myFiles = files.filter((file) => match(file.name));
 
   const newFileItems: (MenuItem | "separator")[] = [
-    { label: "Empty JavaScript file", onSelect: () => onNewFile("untitled.js") },
-    { label: "Empty TypeScript file", onSelect: () => onNewFile("untitled.ts") },
+    ...LANGUAGES.map((language) => ({
+      label: `Empty ${language.label} file`,
+      onSelect: () => onNewFile(`untitled.${language.extensions[0]}`),
+    })),
     "separator",
     ...EXAMPLES.map((example) => ({
       label: `From ${example.title}`,

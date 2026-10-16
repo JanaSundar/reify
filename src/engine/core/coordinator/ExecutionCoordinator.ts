@@ -7,9 +7,11 @@ import {
   type CompileResponse,
   type RuntimeRequest,
   type RuntimeWorkerMessage,
+  type WarmRequest,
 } from "../protocol/messages";
 import {
   DEFAULT_LIMITS,
+  limitMessage,
   type ExecutionLimits,
   type RunOutcome,
   type RunStats,
@@ -53,7 +55,8 @@ export interface RunRequest {
   readonly suite?: TestSuite;
 }
 
-export type RunPhase = "compiling" | "executing";
+/** `loading`: the runtime worker is loading the language runtime (before the run budget). */
+export type RunPhase = "compiling" | "loading" | "executing";
 
 export interface RunProgress {
   readonly phase: RunPhase;
@@ -93,9 +96,17 @@ interface ActiveRun {
   events: number;
   lastProgressAt: number;
   traceStarted: boolean;
+  /** The compiler worker reported `ready` (its language compiler is loaded). */
+  compilerReady: boolean;
 }
 
 const PROGRESS_INTERVAL_MS = 100;
+
+/** A runtime worker started ahead of time, loading the runtime for `languageId`. */
+interface SpareRuntime {
+  readonly worker: WorkerLike;
+  readonly languageId: string;
+}
 
 /**
  * Orchestrates one run at a time across the compiler worker, a fresh runtime worker and
@@ -105,7 +116,7 @@ const PROGRESS_INTERVAL_MS = 100;
  */
 export class ExecutionCoordinator {
   private compiler: WorkerLike | null = null;
-  private spareRuntime: WorkerLike | null = null;
+  private spareRuntime: SpareRuntime | null = null;
   private active: ActiveRun | null = null;
 
   constructor(
@@ -115,10 +126,18 @@ export class ExecutionCoordinator {
     private readonly scheduler: Scheduler = browserScheduler,
   ) {}
 
-  /** Starts workers ahead of time so the first run does not pay their start-up cost. */
-  prewarm(): void {
-    this.ensureCompiler();
-    this.spareRuntime ??= this.workers.runtime();
+  /**
+   * Starts workers ahead of time so the next run does not pay their start-up cost. The spare
+   * runtime worker loads `languageId`'s runtime; a spare warming another language is replaced.
+   */
+  prewarm(languageId: string): void {
+    const warm: WarmRequest = { type: "warm", languageId };
+    this.ensureCompiler().postMessage(warm);
+    if (this.spareRuntime && this.spareRuntime.languageId !== languageId) {
+      this.spareRuntime.worker.terminate();
+      this.spareRuntime = null;
+    }
+    this.spareRuntime ??= this.spawnRuntime(languageId);
   }
 
   start(request: RunRequest, callbacks: RunCallbacks): RunHandle {
@@ -133,9 +152,11 @@ export class ExecutionCoordinator {
       events: 0,
       lastProgressAt: 0,
       traceStarted: false,
+      compilerReady: false,
     };
     this.active = run;
-    run.timer = this.scheduler.setTimeout(() => this.onTimeout(run), this.limits.compileTimeoutMs);
+    // Until the compiler reports `ready`, the load budget applies instead of the compile budget.
+    run.timer = this.scheduler.setTimeout(() => this.onTimeout(run), this.limits.loadTimeoutMs);
     callbacks.onProgress({ phase: "compiling", steps: 0, events: 0 });
     const message: CompileRequest = {
       type: "compile",
@@ -157,8 +178,15 @@ export class ExecutionCoordinator {
     if (this.active) this.stop(this.active);
     this.compiler?.terminate();
     this.compiler = null;
-    this.spareRuntime?.terminate();
+    this.spareRuntime?.worker.terminate();
     this.spareRuntime = null;
+  }
+
+  private spawnRuntime(languageId: string): SpareRuntime {
+    const worker = this.workers.runtime();
+    const warm: WarmRequest = { type: "warm", languageId };
+    worker.postMessage(warm);
+    return { worker, languageId };
   }
 
   // ---------------------------------------------------------------- compile phase
@@ -187,6 +215,16 @@ export class ExecutionCoordinator {
       this.fail(run, message.message);
       return;
     }
+    if (message.type === "ready") {
+      if (run.compilerReady) return;
+      run.compilerReady = true;
+      this.scheduler.clearTimeout(run.timer);
+      run.timer = this.scheduler.setTimeout(
+        () => this.onTimeout(run),
+        this.limits.compileTimeoutMs,
+      );
+      return;
+    }
     this.onCompiled(run, message);
   }
 
@@ -209,25 +247,35 @@ export class ExecutionCoordinator {
   // ---------------------------------------------------------------- execute phase
 
   private execute(run: ActiveRun, code: string): void {
-    run.phase = "executing";
+    // Until the worker reports `ready`, the load budget applies instead of the run budget.
+    run.phase = "loading";
     this.scheduler.clearTimeout(run.timer);
-    run.timer = this.scheduler.setTimeout(() => this.onTimeout(run), this.limits.timeoutMs);
+    run.timer = this.scheduler.setTimeout(() => this.onTimeout(run), this.limits.loadTimeoutMs);
 
-    const worker = this.spareRuntime ?? this.workers.runtime();
+    const { runId, languageId, suite } = run.request;
+    // Any spare works (runtimes load on demand); one warming this language is ready sooner.
+    const worker = (this.spareRuntime ?? this.spawnRuntime(languageId)).worker;
     this.spareRuntime = null;
     run.runtime = worker;
     worker.onmessage = (event) => this.onRuntimeMessage(run, event.data);
     worker.onerror = (event) =>
       this.fail(run, `Execution worker failed: ${event.message ?? "unknown error"}`);
 
-    const { runId, languageId, suite } = run.request;
     const request: RuntimeRequest = suite
       ? { type: "test", runId, languageId, code, suite, limits: this.limits }
       : { type: "execute", runId, languageId, code, limits: this.limits };
     worker.postMessage(request);
+    run.callbacks.onProgress({ phase: "loading", steps: 0, events: 0 });
+    // Warm the next runtime worker, for the same language, while this one executes.
+    this.spareRuntime = this.spawnRuntime(languageId);
+  }
+
+  private onReady(run: ActiveRun): void {
+    if (run.phase !== "loading") return;
+    run.phase = "executing";
+    this.scheduler.clearTimeout(run.timer);
+    run.timer = this.scheduler.setTimeout(() => this.onTimeout(run), this.limits.timeoutMs);
     run.callbacks.onProgress({ phase: "executing", steps: 0, events: 0 });
-    // Warm the next runtime worker while this one executes.
-    this.spareRuntime = this.workers.runtime();
   }
 
   private onRuntimeMessage(run: ActiveRun, data: unknown): void {
@@ -236,6 +284,9 @@ export class ExecutionCoordinator {
     if (!message || message.runId !== run.request.runId) return;
 
     switch (message.type) {
+      case "ready":
+        this.onReady(run);
+        return;
       case "events": {
         let events: TraceEvent[];
         try {
@@ -303,13 +354,27 @@ export class ExecutionCoordinator {
       // A stuck compiler is replaced; the next run gets a fresh one.
       this.compiler?.terminate();
       this.compiler = null;
-      this.fail(run, `Compilation took longer than ${this.limits.compileTimeoutMs} ms.`);
+      this.fail(
+        run,
+        run.compilerReady
+          ? `Compilation took longer than ${this.limits.compileTimeoutMs} ms.`
+          : `The ${run.request.languageId} compiler did not load within ${this.limits.loadTimeoutMs / 1000} s. ` +
+              "Check your connection and run again.",
+      );
+      return;
+    }
+    if (run.phase === "loading") {
+      this.fail(
+        run,
+        `The ${run.request.languageId} runtime did not load within ${this.limits.loadTimeoutMs / 1000} s. ` +
+          "Check your connection and run again.",
+      );
       return;
     }
     const outcome: RunOutcome = {
       kind: "limit",
       limit: "time",
-      message: `Execution took longer than ${this.limits.timeoutMs / 1000} s and was stopped.`,
+      message: limitMessage("time", this.limits),
     };
     const stats = this.statsOf(run, this.store.stepCount, this.limits.timeoutMs);
     if (run.traceStarted) this.store.finish(run.request.runId, outcome, stats);

@@ -20,6 +20,8 @@ export interface LinkedListShape {
   readonly nextField: string;
   /** Node the last `next` points back to, when the list is cyclic. */
   readonly cycleTo: HeapId | null;
+  /** How the language writes the empty `next` that ends the list (`null`, `None`, ...). */
+  readonly end: string;
 }
 
 export interface TreeShape {
@@ -53,7 +55,7 @@ const asNode = (heap: Heap, value: EncodedValue | undefined): NodeObject | null 
 const field = (object: NodeObject, name: string): EncodedValue | undefined =>
   object.fields.find(([key]) => key === name)?.[1];
 
-const isEmpty = (value: EncodedValue | undefined): boolean =>
+const isEmpty = (value: EncodedValue | undefined): value is PrimitiveValue =>
   value?.kind === "primitive" && (value.type === "null" || value.type === "undefined");
 
 const signature = (object: NodeObject): string =>
@@ -80,13 +82,17 @@ const recognizeList = (heap: Heap, head: NodeObject): LinkedListShape | null => 
   const seen = new Set<HeapId>();
   let current: NodeObject | null = head;
   let cycleTo: HeapId | null = null;
+  let end = "null";
   while (current) {
     if (signature(current) !== sig || hasForeignLinks(heap, current, [nextField], sig)) return null;
     nodes.push(current.id);
     seen.add(current.id);
     if (nodes.length > MAX_STRUCTURE_NODES) return null;
     const next = field(current, nextField);
-    if (isEmpty(next)) break;
+    if (isEmpty(next)) {
+      end = next.text;
+      break;
+    }
     const node = asNode(heap, next);
     if (!node) return null;
     if (seen.has(node.id)) {
@@ -96,7 +102,7 @@ const recognizeList = (heap: Heap, head: NodeObject): LinkedListShape | null => 
     current = node;
   }
   if (nodes.length < 2 && !SUGGESTIVE_NAME.test(head.typeName)) return null;
-  return { kind: "linked-list", nodes, nextField, cycleTo };
+  return { kind: "linked-list", nodes, nextField, cycleTo, end };
 };
 
 const childSlots = (heap: Heap, node: NodeObject, binary: boolean): Array<HeapId | null> | null => {

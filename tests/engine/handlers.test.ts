@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { CompilerWorkerMessage, RuntimeWorkerMessage } from "@/engine/core/protocol/messages";
+import {
+  parseCompilerMessage,
+  parseRuntimeMessage,
+  parseWarmRequest,
+  type CompilerWorkerMessage,
+  type RuntimeWorkerMessage,
+} from "@/engine/core/protocol/messages";
 import { decodeEvents } from "@/engine/core/protocol/eventCodec";
 import { handleCompile, handleExecute } from "@/engine/workers/handlers";
 import { TEST_LIMITS } from "../helpers";
@@ -17,7 +23,8 @@ describe("worker handlers", () => {
       (m) => compiled.push(m),
       () => 0,
     );
-    const response = compiled[0]!;
+    expect(compiled[0]).toEqual({ type: "ready", runId: 3 });
+    const response = compiled[1]!;
     expect(response).toMatchObject({ type: "compiled", runId: 3, result: { ok: true } });
     if (response.type !== "compiled" || !response.result.ok) return;
 
@@ -42,6 +49,8 @@ describe("worker handlers", () => {
       },
     );
     expect(lockedDown).toBe(true);
+    // `ready` comes first: the coordinator starts the execution budget on it.
+    expect(messages[0]).toEqual({ type: "ready", runId: 3 });
     const batches = messages.filter((m) => m.type === "events");
     expect(batches.length).toBeGreaterThan(1);
     for (const [i, m] of messages.entries()) {
@@ -60,5 +69,17 @@ describe("worker handlers", () => {
       () => 0,
     );
     expect(out[0]).toMatchObject({ type: "failure", runId: 1 });
+  });
+
+  it("validates warm requests and ready messages", () => {
+    expect(parseWarmRequest({ type: "warm", languageId: "python" })).toEqual({
+      type: "warm",
+      languageId: "python",
+    });
+    expect(parseWarmRequest({ type: "warm" })).toBeNull();
+    expect(parseWarmRequest({ type: "execute", languageId: "python" })).toBeNull();
+    expect(parseRuntimeMessage({ type: "ready", runId: 4 })).toEqual({ type: "ready", runId: 4 });
+    expect(parseRuntimeMessage({ type: "ready" })).toBeNull();
+    expect(parseCompilerMessage({ type: "ready", runId: 4 })).toEqual({ type: "ready", runId: 4 });
   });
 });

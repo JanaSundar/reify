@@ -8,9 +8,10 @@ import {
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { javascript, javascriptLanguage, scopeCompletionSource } from "@codemirror/lang-javascript";
-import { bracketMatching, indentOnInput } from "@codemirror/language";
+import { python } from "@codemirror/lang-python";
+import { bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
 import { lintGutter, setDiagnostics, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
-import { Compartment, EditorState, type Text } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, type Text } from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -21,6 +22,7 @@ import {
 } from "@codemirror/view";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { SourceRange } from "@/engine/core/protocol/program";
+import type { LanguageId } from "@/engine/languages/catalog";
 import { syntaxColors } from "./highlight";
 import { breakpointGutter, setBreakpoints } from "./breakpoints";
 import { executionLine, executionMarkEffects, type ExecutionMark } from "./executionLine";
@@ -33,7 +35,7 @@ export interface EditorDiagnostic {
 
 interface CodeEditorProps {
   readonly initialValue: string;
-  readonly typescript: boolean;
+  readonly languageId: LanguageId;
   readonly execution: ExecutionMark | null;
   readonly diagnostics: readonly EditorDiagnostic[];
   readonly breakpoints: readonly number[];
@@ -48,6 +50,14 @@ interface CodeEditorProps {
 
 /** Builtins offered by autocomplete in addition to local identifiers and keywords. */
 const COMPLETION_SCOPE = { Math, Array, Object, Map, Set, Number, String, JSON, console, Infinity };
+
+/** Syntax support per language (the JS completion source only attaches to JS documents). */
+const LANGUAGE_SUPPORT: Record<LanguageId, () => Extension> = {
+  javascript: () => javascript(),
+  typescript: () => javascript({ typescript: true }),
+  // PEP 8 indents by four spaces; JavaScript keeps the editor default of two.
+  python: () => [python(), indentUnit.of("    ")],
+};
 
 const positionOf = (doc: Text, line: number, column: number): number => {
   const target = doc.line(Math.min(Math.max(1, line), doc.lines));
@@ -75,7 +85,7 @@ const toCmDiagnostics = (doc: Text, diagnostics: readonly EditorDiagnostic[]): C
  */
 export function CodeEditor({
   initialValue,
-  typescript,
+  languageId,
   execution,
   diagnostics,
   breakpoints,
@@ -115,7 +125,7 @@ export function CodeEditor({
         closeBrackets(),
         highlightActiveLine(),
         syntaxColors(),
-        language.current.of(javascript({ typescript })),
+        language.current.of(LANGUAGE_SUPPORT[languageId]()),
         javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(COMPLETION_SCOPE) }),
         autocompletion(),
         lintGutter(),
@@ -146,8 +156,10 @@ export function CodeEditor({
   }, []);
 
   useEffect(() => {
-    view.current?.dispatch({ effects: language.current.reconfigure(javascript({ typescript })) });
-  }, [typescript]);
+    view.current?.dispatch({
+      effects: language.current.reconfigure(LANGUAGE_SUPPORT[languageId]()),
+    });
+  }, [languageId]);
 
   useEffect(() => {
     const editor = view.current;

@@ -25,6 +25,7 @@ const head = new ListNode(1, new ListNode(2, new ListNode(3)));`);
       "3",
     ]);
     expect((shape as LinkedListShape).cycleTo).toBeNull();
+    expect((shape as LinkedListShape).end).toBe("null");
   });
 
   it("stops at a cycle instead of traversing forever", () => {

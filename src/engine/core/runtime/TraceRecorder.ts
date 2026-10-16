@@ -1,5 +1,5 @@
 import type { TraceEvent } from "../protocol/events";
-import type { ExecutionLimits } from "../protocol/limits";
+import { limitMessage, type ExecutionLimits } from "../protocol/limits";
 import { ResourceLimitError } from "./ResourceLimitError";
 
 export type EventSink = (events: readonly TraceEvent[]) => void;
@@ -56,27 +56,23 @@ export class TraceRecorder {
     this.assertHealthy();
     this.stepCount += 1;
     if (this.stepCount > this.limits.maxSteps) {
-      this.fail(
-        new ResourceLimitError(
-          "steps",
-          `Execution exceeded ${this.limits.maxSteps.toLocaleString("en-US")} steps. ` +
-            "Check for an infinite loop or reduce the input size.",
-        ),
-      );
+      this.fail(new ResourceLimitError("steps", limitMessage("steps", this.limits)));
     }
+  }
+
+  /**
+   * Adds steps counted by a runtime that enforces the step budget itself (Python counts
+   * inside Pyodide, where a budget error must be raised as a Python exception).
+   */
+  addSteps(count: number): void {
+    this.stepCount += count;
   }
 
   enterFrame(): void {
     this.depth += 1;
     if (this.depth > this.peak) this.peak = this.depth;
     if (this.depth > this.limits.maxCallDepth) {
-      this.fail(
-        new ResourceLimitError(
-          "call-depth",
-          `Call depth exceeded ${this.limits.maxCallDepth.toLocaleString("en-US")}. ` +
-            "Check the recursion's base case.",
-        ),
-      );
+      this.fail(new ResourceLimitError("call-depth", limitMessage("call-depth", this.limits)));
     }
   }
 
@@ -87,12 +83,7 @@ export class TraceRecorder {
   emit(event: TraceEvent): void {
     if (this.sink === null || this.closed || this.failure !== null) return;
     if (this.eventCount >= this.limits.maxEvents) {
-      this.fail(
-        new ResourceLimitError(
-          "events",
-          `The trace exceeded ${this.limits.maxEvents.toLocaleString("en-US")} events and was truncated.`,
-        ),
-      );
+      this.fail(new ResourceLimitError("events", limitMessage("events", this.limits)));
     }
     this.eventCount += 1;
     this.buffer.push(event);

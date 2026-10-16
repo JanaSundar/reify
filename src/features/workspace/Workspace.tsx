@@ -31,6 +31,7 @@ import { Menu, type MenuItem } from "@/components/Menu";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { findExample } from "@/content/examples";
+import { LANGUAGES, languageById, type LanguageId } from "@/engine/languages/catalog";
 import type { Diagnostic } from "@/engine/core/protocol/program";
 import type { TestCase, TestSuite } from "@/engine/core/protocol/testing";
 import { BreakpointsPanel } from "@/features/breakpoints/BreakpointsPanel";
@@ -85,6 +86,13 @@ const STATUS_TEXT: Record<ExecutionStatus, string> = {
   cancelled: "Cancelled",
 };
 
+/** Badge colours in the language menu (each language's own brand colour). */
+const LANGUAGE_BADGE_CLASS: Record<LanguageId, string> = {
+  javascript: "bg-[#f7df1e] text-black",
+  typescript: "bg-[#3178c6] text-white",
+  python: "bg-[#3776ab] text-[#ffd43b]",
+};
+
 const SAVE_DELAY_MS = 400;
 /** Height of the bottom drawer's tab bar; the drawer collapses down to it. */
 const DRAWER_BAR_PX = 46;
@@ -124,7 +132,7 @@ const isEditable = (target: EventTarget | null): boolean =>
   Boolean(target.closest("input, textarea, select, [contenteditable='true'], .cm-editor"));
 
 export default function Workspace() {
-  const { store, actor } = useExecutionSession();
+  const { store, actor, prewarm } = useExecutionSession();
   const trace = useTraceSnapshot(store);
   const status = useExecutionStatus(actor);
   const context = useExecutionContext(actor);
@@ -174,7 +182,12 @@ export default function Workspace() {
   const view = trace.view;
   const languageId = doc.languageId;
   const suite = doc.suite;
-  const functionNames = useMemo(() => detectFunctionNames(doc.source), [doc.source]);
+  const functionNames = useMemo(
+    () => detectFunctionNames(doc.source, languageId),
+    [doc.source, languageId],
+  );
+  // Keep a runtime for the open document's language loading before the user presses Run.
+  useEffect(() => prewarm(languageId), [prewarm, languageId]);
 
   const [saveFailed, setSaveFailed] = useState(false);
   useEffect(() => setSaveFailed(!saveWorkspace(workspace)), [workspace]);
@@ -266,7 +279,7 @@ export default function Workspace() {
     capture("test_case_trace_started", { language: languageId });
     actor.send({
       type: "RUN",
-      source: traceSourceFor(source.current, suite, testCase),
+      source: traceSourceFor(source.current, suite, testCase, languageId),
       languageId,
     });
   };
@@ -431,6 +444,7 @@ export default function Workspace() {
 
   const statusText = (() => {
     if (busy && context.phase === "compiling") return "Compiling";
+    if (busy && context.phase === "loading") return `Loading ${languageById(languageId).label}`;
     if (busy && testMode)
       return `Testing ${context.testResults.length} of ${context.request?.suite?.cases.length ?? 0}`;
     if (busy) return `${STATUS_TEXT[status]} · ${context.steps.toLocaleString("en-US")} steps`;
@@ -452,7 +466,7 @@ export default function Workspace() {
         <CodeEditor
           key={`${doc.key}:${generation}`}
           initialValue={doc.source}
-          typescript={languageId === "typescript"}
+          languageId={languageId}
           execution={execution}
           diagnostics={diagnostics}
           breakpoints={breakpoints}
@@ -564,7 +578,7 @@ export default function Workspace() {
         {view ? (
           <ExecutionFlow
             view={view}
-            languageBadge={languageId === "typescript" ? "TS" : "JS"}
+            languageBadge={languageById(languageId).badge}
             focus={focus}
             onFocus={setFocus}
           />
@@ -990,56 +1004,32 @@ export default function Workspace() {
               align="end"
               trigger={
                 <button type="button" className={`${outlineButton} w-44 justify-between`}>
-                  {languageId === "typescript" ? "TypeScript" : "JavaScript"}
+                  {languageById(languageId).label}
                   <ChevronDown size={15} className="text-muted" />
                 </button>
               }
-              items={[
-                {
-                  label: "JavaScript",
-                  icon: (
-                    <span className="rounded bg-[#f7df1e] px-1 text-[10px] font-bold text-black">
-                      JS
-                    </span>
-                  ),
-                  hint: languageId === "javascript" ? "✓" : undefined,
-                  disabled: doc.ref.kind === "example" && languageId !== "javascript",
-                  onSelect: () => {
-                    dispatch({ type: "language", languageId: "javascript" });
-                    capture("language_changed", { language: "javascript" });
-                  },
+              items={LANGUAGES.map((language) => ({
+                label: language.label,
+                icon: (
+                  <span
+                    className={`rounded px-1 text-[10px] font-bold ${LANGUAGE_BADGE_CLASS[language.id]}`}
+                  >
+                    {language.badge}
+                  </span>
+                ),
+                hint:
+                  language.id === languageId
+                    ? "✓"
+                    : doc.ref.kind === "example"
+                      ? "files only"
+                      : undefined,
+                // Examples keep their language; only the user's own files can switch.
+                disabled: doc.ref.kind === "example" && language.id !== languageId,
+                onSelect: () => {
+                  dispatch({ type: "language", languageId: language.id });
+                  capture("language_changed", { language: language.id });
                 },
-                {
-                  label: "TypeScript",
-                  icon: (
-                    <span className="rounded bg-[#3178c6] px-1 text-[10px] font-bold text-white">
-                      TS
-                    </span>
-                  ),
-                  hint:
-                    languageId === "typescript"
-                      ? "✓"
-                      : doc.ref.kind === "example"
-                        ? "files only"
-                        : undefined,
-                  disabled: doc.ref.kind === "example",
-                  onSelect: () => {
-                    dispatch({ type: "language", languageId: "typescript" });
-                    capture("language_changed", { language: "typescript" });
-                  },
-                },
-                {
-                  label: "Python",
-                  icon: (
-                    <span className="rounded bg-surface-3 px-1 text-[10px] font-bold text-muted">
-                      PY
-                    </span>
-                  ),
-                  hint: "soon",
-                  disabled: true,
-                  onSelect: () => undefined,
-                },
-              ]}
+              }))}
             />
 
             <div className="flex h-10 items-stretch rounded-xl bg-ink text-bg">

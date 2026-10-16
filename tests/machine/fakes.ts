@@ -16,6 +16,11 @@ export class FakeWorker implements WorkerLike {
     this.posted.push(message);
   }
 
+  /** Posted messages other than the `warm` hint every runtime worker receives first. */
+  get requests(): unknown[] {
+    return this.posted.filter((m) => (m as { type?: string }).type !== "warm");
+  }
+
   terminate(): void {
     this.terminated = true;
   }
@@ -45,9 +50,13 @@ export class FakeWorkers implements WorkerFactories {
     return this.created.filter((w) => w.kind === "compiler");
   }
 
-  /** Runtime workers that received an execute request. */
+  /** Runtime workers that received an execute or test request. */
   get executing(): FakeWorker[] {
-    return this.created.filter((w) => w.kind === "runtime" && w.posted.length > 0);
+    return this.created.filter((w) => w.kind === "runtime" && w.requests.length > 0);
+  }
+
+  get runtimes(): FakeWorker[] {
+    return this.created.filter((w) => w.kind === "runtime");
   }
 
   private make(kind: FakeWorker["kind"]): FakeWorker {

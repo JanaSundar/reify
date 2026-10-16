@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { languageById } from "@/engine/languages/catalog";
 import {
   docKey,
   initialWorkspace,
   MAX_FILES,
-  NEW_FILE_SOURCE,
+  newFileSource,
   resolveDoc,
   saveWorkspace,
   uniqueName,
@@ -86,7 +87,30 @@ describe("workspace files", () => {
 
   it("starts new files with the storage note", () => {
     const state = workspaceReducer(start(), { type: "create", id: "a" });
-    expect(state.files.find((f) => f.id === "a")!.source).toBe(NEW_FILE_SOURCE);
+    expect(state.files.find((f) => f.id === "a")!.source).toBe(
+      newFileSource(languageById("javascript")),
+    );
+  });
+
+  it("detects Python files and starts them with a Python comment", () => {
+    const state = workspaceReducer(start(), { type: "create", id: "p", name: "solve.py" });
+    const doc = resolveDoc(state, state.active)!;
+    expect(doc.languageId).toBe("python");
+    expect(doc.source.startsWith("# ")).toBe(true);
+  });
+
+  it("switching language rewrites an untouched starter but keeps edited code", () => {
+    let state = workspaceReducer(start(), { type: "create", id: "a" });
+    state = workspaceReducer(state, { type: "language", languageId: "python" });
+    let doc = resolveDoc(state, state.active)!;
+    expect(doc.name).toBe("untitled.py");
+    expect(doc.source).toBe(newFileSource(languageById("python")));
+
+    state = workspaceReducer(state, { type: "edit", source: "print(1)\n" });
+    state = workspaceReducer(state, { type: "language", languageId: "javascript" });
+    doc = resolveDoc(state, state.active)!;
+    expect(doc.name).toBe("untitled.js");
+    expect(doc.source).toBe("print(1)\n");
   });
 });
 

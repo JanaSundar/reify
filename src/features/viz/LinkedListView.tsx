@@ -18,7 +18,8 @@ function Arrow({ label }: { label?: string }) {
 }
 
 /**
- * A recognized singly linked list: value boxes joined by `next` arrows, ending in null or
+ * A recognized singly linked list: value boxes joined by `next` arrows, ending in the empty
+ * value as the language writes it (`null`, `None`) or
  * looping back (drawn as a labelled return arrow, never by repeating nodes). Nodes are keyed
  * by heap identity, so relinking moves them instead of redrawing them.
  */
@@ -51,7 +52,7 @@ export function LinkedListView({ shape }: { shape: LinkedListShape }) {
           {shape.cycleTo === null ? (
             <>
               <Arrow />
-              <span className="font-mono text-xs text-[var(--val-keyword)]">null</span>
+              <span className="font-mono text-xs text-[var(--val-keyword)]">{shape.end}</span>
             </>
           ) : (
             <span
