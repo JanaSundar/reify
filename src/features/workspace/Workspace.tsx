@@ -69,6 +69,7 @@ import { bannerFor, RunBanner, type BannerMessage } from "./RunBanner";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { easeOut, FADE_UP, SWAP_Y } from "@/components/motion";
+import { copyText, downloadText } from "@/lib/download";
 
 const VIEW_MODES = ["visual", "split", "code"] as const;
 type ViewMode = (typeof VIEW_MODES)[number];
@@ -88,7 +89,7 @@ const SAVE_DELAY_MS = 400;
 /** Height of the bottom drawer's tab bar; the drawer collapses down to it. */
 const DRAWER_BAR_PX = 46;
 const TOGGLE_ANIMATION_MS = 340;
-const LIMIT_NOTICE_MS = 6000;
+const NOTICE_MS = 6000;
 
 const card = "rounded-2xl bg-surface edge";
 const outlineButton =
@@ -121,13 +122,6 @@ const readLaunchOptions = () => {
 const isEditable = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   Boolean(target.closest("input, textarea, select, [contenteditable='true'], .cm-editor"));
-
-const download = (name: string, text: string, type: string) => {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const link = Object.assign(document.createElement("a"), { href: url, download: name });
-  link.click();
-  URL.revokeObjectURL(url);
-};
 
 export default function Workspace() {
   const { store, actor } = useExecutionSession();
@@ -185,13 +179,13 @@ export default function Workspace() {
   const [saveFailed, setSaveFailed] = useState(false);
   useEffect(() => setSaveFailed(!saveWorkspace(workspace)), [workspace]);
 
-  /** A short-lived notice for refused actions (file or size limits). */
-  const [limitNotice, setLimitNotice] = useState<BannerMessage | null>(null);
-  const limitTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const showLimit = (title: string, detail: string) => {
-    setLimitNotice({ tone: "warning", title, details: [detail] });
-    clearTimeout(limitTimer.current);
-    limitTimer.current = setTimeout(() => setLimitNotice(null), LIMIT_NOTICE_MS);
+  /** A short-lived notice for the result of an action (refused limits, export outcomes). */
+  const [notice, setNotice] = useState<BannerMessage | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const notify = (title: string, detail?: string, tone: BannerMessage["tone"] = "warning") => {
+    setNotice({ tone, title, details: detail ? [detail] : [] });
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), NOTICE_MS);
   };
   const storageNotice: BannerMessage | null = saveFailed
     ? {
@@ -204,7 +198,7 @@ export default function Workspace() {
   /** Adds or duplicates a file unless the workspace is full. */
   const addFile = (action: Extract<WorkspaceAction, { type: "create" | "duplicate" }>) => {
     if (workspace.files.length >= MAX_FILES) {
-      showLimit(
+      notify(
         `You can keep up to ${MAX_FILES} files`,
         "Delete a file you don't need to make room for a new one.",
       );
@@ -466,7 +460,7 @@ export default function Workspace() {
           onChange={onChange}
           maxLength={MAX_FILE_CHARS}
           onLimit={() =>
-            showLimit(
+            notify(
               "This file is at its size limit",
               `Files can hold up to ${MAX_FILE_CHARS / 1000} KB of code.`,
             )
@@ -656,15 +650,22 @@ export default function Workspace() {
     {
       label: "Copy logs",
       icon: <Copy size={14} />,
+      hint: trace.totalSteps === 0 ? "Run first" : undefined,
       disabled: trace.totalSteps === 0,
-      onSelect: () => void navigator.clipboard.writeText(logAsText(store, trace.totalSteps)),
+      onSelect: () =>
+        void copyText(logAsText(store, trace.totalSteps)).then((copied) =>
+          copied
+            ? notify("Logs copied", undefined, "muted")
+            : notify("Couldn't copy the logs", "Your browser blocked clipboard access."),
+        ),
     },
     {
       label: "Download JSON",
       icon: <Download size={14} />,
+      hint: trace.totalSteps === 0 ? "Run first" : undefined,
       disabled: trace.totalSteps === 0,
-      onSelect: () =>
-        download(
+      onSelect: () => {
+        downloadText(
           `${doc.name.replace(/\.[^.]+$/, "")}-trace.json`,
           JSON.stringify(
             {
@@ -678,7 +679,9 @@ export default function Workspace() {
             2,
           ),
           "application/json",
-        ),
+        );
+        notify("Trace downloaded", undefined, "muted");
+      },
     },
   ];
 
@@ -1099,7 +1102,7 @@ export default function Workspace() {
             </div>
           </div>
 
-          <RunBanner message={storageNotice ?? limitNotice} />
+          <RunBanner message={storageNotice ?? notice} />
           <Group orientation="vertical" className="min-h-0 flex-1" data-animating={animating}>
             <Panel id="main" minSize="35">
               <div className="flex h-full min-h-0 flex-col gap-3">
