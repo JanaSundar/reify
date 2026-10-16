@@ -244,7 +244,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
         </div>
       )}
 
-      <label className="mx-4 mt-4 flex h-9 items-center gap-2 rounded-lg px-2.5 edge focus-within:edge-accent">
+      <label className="mx-4 mt-4 flex h-9 items-center gap-2 rounded-lg px-2.5 edge">
         <Search size={14} className="text-faint" />
         <input
           ref={searchRef}
@@ -253,7 +253,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
           onKeyDown={(event) => event.key === "Escape" && setQuery("")}
           placeholder="Search files..."
           aria-label="Search files"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-faint"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none! placeholder:text-faint"
         />
         <kbd className="text-[11px] text-faint">⌘K</kbd>
       </label>

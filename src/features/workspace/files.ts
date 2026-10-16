@@ -57,6 +57,18 @@ export type WorkspaceAction =
   | { readonly type: "clearBreakpoints" }
   | { readonly type: "reset" };
 
+/** Browser storage is small and written whole, so files are capped (count and size). */
+export const MAX_FILES = 50;
+export const MAX_FILE_CHARS = 200_000;
+
+/** What a new empty file starts with: where files live, so nobody expects a server copy. */
+export const NEW_FILE_SOURCE = [
+  "// Your files are stored only in this browser, never uploaded.",
+  "// Clearing site data deletes them, so copy anything you want to keep.",
+  "",
+  "",
+].join("\n");
+
 export const EMPTY_SUITE: TestSuite = { entry: "", target: "return", cases: [] };
 
 export const docKey = (ref: DocRef): string => `${ref.kind}:${ref.id}`;
@@ -162,10 +174,11 @@ export const workspaceReducer = (
         ? updateFile(state, active.id, (file) => ({ ...file, suite: action.suite }))
         : { ...state, exampleSuites: { ...state.exampleSuites, [active.id]: action.suite } };
     case "create": {
+      if (state.files.length >= MAX_FILES) return state;
       const file: WorkspaceFile = {
         id: action.id,
         name: uniqueName(state.files, action.name ?? "untitled.js"),
-        source: action.source ?? "",
+        source: action.source ?? NEW_FILE_SOURCE,
         suite: EMPTY_SUITE,
       };
       return open({ ...state, files: [...state.files, file] }, { kind: "file", id: file.id });
@@ -178,7 +191,7 @@ export const workspaceReducer = (
     }
     case "duplicate": {
       const original = state.files.find((file) => file.id === action.id);
-      if (!original) return state;
+      if (!original || state.files.length >= MAX_FILES) return state;
       const copy = { ...original, id: action.newId, name: uniqueName(state.files, original.name) };
       return open({ ...state, files: [...state.files, copy] }, { kind: "file", id: copy.id });
     }
@@ -289,13 +302,17 @@ export const loadWorkspace = (): WorkspaceState => {
   return initialWorkspace();
 };
 
-/** Persists files, tabs and breakpoints (example edits are session-only). */
-export const saveWorkspace = (state: WorkspaceState): void => {
+/**
+ * Persists files, tabs and breakpoints (example edits are session-only). Returns whether it
+ * was saved: storage can be full or unavailable (private mode), and the caller tells the user.
+ */
+export const saveWorkspace = (state: WorkspaceState): boolean => {
   try {
     const { exampleEdits: _edits, exampleSuites: _suites, ...kept } = state;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
+    return true;
   } catch {
-    // Storage may be unavailable (private mode, quota); the workspace just isn't kept.
+    return false;
   }
 };
 

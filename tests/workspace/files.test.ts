@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   docKey,
   initialWorkspace,
+  MAX_FILES,
+  NEW_FILE_SOURCE,
   resolveDoc,
+  saveWorkspace,
   uniqueName,
   workspaceReducer,
   type WorkspaceState,
@@ -69,5 +72,35 @@ describe("workspace files", () => {
     ];
     expect(uniqueName(files, "a.js")).toBe("a-2.js");
     expect(uniqueName(files, "b.js")).toBe("b.js");
+  });
+
+  it("stops adding files once the workspace is full", () => {
+    let state = start();
+    for (let i = 0; i < MAX_FILES + 5; i++) {
+      state = workspaceReducer(state, { type: "create", id: `n${i}` });
+    }
+    expect(state.files).toHaveLength(MAX_FILES);
+    const copied = workspaceReducer(state, { type: "duplicate", id: "index", newId: "dup" });
+    expect(copied).toBe(state);
+  });
+
+  it("starts new files with the storage note", () => {
+    const state = workspaceReducer(start(), { type: "create", id: "a" });
+    expect(state.files.find((f) => f.id === "a")!.source).toBe(NEW_FILE_SOURCE);
+  });
+});
+
+describe("saveWorkspace", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reports whether the workspace was saved", () => {
+    vi.stubGlobal("localStorage", { setItem: vi.fn<() => void>() });
+    expect(saveWorkspace(start())).toBe(true);
+    vi.stubGlobal("localStorage", {
+      setItem: () => {
+        throw new DOMException("full", "QuotaExceededError");
+      },
+    });
+    expect(saveWorkspace(start())).toBe(false);
   });
 });

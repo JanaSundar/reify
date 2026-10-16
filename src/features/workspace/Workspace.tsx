@@ -9,6 +9,7 @@ import {
   Maximize2,
   Minimize2,
   PanelLeft,
+  PanelRight,
   Play,
   Plus,
   RotateCcw,
@@ -18,7 +19,13 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
+import {
+  Group,
+  Panel,
+  Separator,
+  usePanelRef,
+  type PanelImperativeHandle,
+} from "react-resizable-panels";
 import { Menu, type MenuItem } from "@/components/Menu";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
@@ -48,13 +55,16 @@ import type { ExecutionStatus } from "@/machine/executionMachine";
 import {
   docKey,
   loadWorkspace,
+  MAX_FILE_CHARS,
+  MAX_FILES,
   newFileId,
   resolveDoc,
   saveWorkspace,
   workspaceReducer,
   type DocRef,
+  type WorkspaceAction,
 } from "./files";
-import { bannerFor, RunBanner } from "./RunBanner";
+import { bannerFor, RunBanner, type BannerMessage } from "./RunBanner";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { easeOut, FADE_UP, SWAP_Y } from "@/components/motion";
@@ -77,6 +87,7 @@ const SAVE_DELAY_MS = 400;
 /** Height of the bottom drawer's tab bar; the drawer collapses down to it. */
 const DRAWER_BAR_PX = 46;
 const TOGGLE_ANIMATION_MS = 340;
+const LIMIT_NOTICE_MS = 6000;
 
 const card = "rounded-2xl bg-surface edge";
 const outlineButton =
@@ -129,6 +140,7 @@ export default function Workspace() {
     oneOf(DRAWER_TABS),
   );
   const [sidebarOpen, setSidebarOpen] = usePreference<boolean>("sidebar", true);
+  const [inspectorOpen, setInspectorOpen] = usePreference<boolean>("inspector", true);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -143,9 +155,12 @@ export default function Workspace() {
   const searchInput = useRef<HTMLInputElement>(null);
 
   const drawerPanel = usePanelRef();
+  const inspectorPanel = usePanelRef();
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [animating, setAnimating] = useState(false);
   const animationTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  /** True while a toggle animation runs, so its in-between sizes are not mistaken for a drag. */
+  const toggling = useRef(false);
 
   const busy = status === "running" || status === "cancelling";
   const testMode = Boolean(context.request?.suite);
@@ -154,7 +169,37 @@ export default function Workspace() {
   const suite = doc.suite;
   const functionNames = useMemo(() => detectFunctionNames(doc.source), [doc.source]);
 
-  useEffect(() => saveWorkspace(workspace), [workspace]);
+  const [saveFailed, setSaveFailed] = useState(false);
+  useEffect(() => setSaveFailed(!saveWorkspace(workspace)), [workspace]);
+
+  /** A short-lived notice for refused actions (file or size limits). */
+  const [limitNotice, setLimitNotice] = useState<BannerMessage | null>(null);
+  const limitTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const showLimit = (title: string, detail: string) => {
+    setLimitNotice({ tone: "warning", title, details: [detail] });
+    clearTimeout(limitTimer.current);
+    limitTimer.current = setTimeout(() => setLimitNotice(null), LIMIT_NOTICE_MS);
+  };
+  const storageNotice: BannerMessage | null = saveFailed
+    ? {
+        tone: "danger",
+        title: "Your files aren't being saved",
+        details: ["Browser storage is full or unavailable. Copy anything you want to keep."],
+      }
+    : null;
+
+  /** Adds or duplicates a file unless the workspace is full. */
+  const addFile = (action: Extract<WorkspaceAction, { type: "create" | "duplicate" }>) => {
+    if (workspace.files.length >= MAX_FILES) {
+      showLimit(
+        `You can keep up to ${MAX_FILES} files`,
+        "Delete a file you don't need to make room for a new one.",
+      );
+      return;
+    }
+    flushEdit();
+    dispatch(action);
+  };
   useEffect(() => {
     if (launch.tab) setDrawerTab(launch.tab);
     // Launch options apply once.
@@ -206,15 +251,29 @@ export default function Workspace() {
     return true;
   };
 
-  /** Collapses or expands the bottom drawer with an animated resize. */
-  const toggleDrawer = () => {
-    const panel = drawerPanel.current;
-    if (!panel) return;
+  /** Runs `resize` with the panel sizes animated (never while dragging). */
+  const animateResize = (resize: () => void) => {
+    toggling.current = true;
     setAnimating(true);
     clearTimeout(animationTimer.current);
-    animationTimer.current = setTimeout(() => setAnimating(false), TOGGLE_ANIMATION_MS);
-    if (panel.isCollapsed()) panel.expand();
-    else panel.collapse();
+    animationTimer.current = setTimeout(() => {
+      toggling.current = false;
+      setAnimating(false);
+    }, TOGGLE_ANIMATION_MS);
+    resize();
+  };
+
+  /** Collapses or expands a panel with an animated resize. */
+  const togglePanel = (panel: PanelImperativeHandle | null) => {
+    if (!panel) return;
+    animateResize(() => (panel.isCollapsed() ? panel.expand() : panel.collapse()));
+  };
+
+  const toggleDrawer = () => togglePanel(drawerPanel.current);
+
+  const toggleInspector = () => {
+    setInspectorOpen(!inspectorOpen);
+    togglePanel(inspectorPanel.current);
   };
 
   const onChange = (value: string) => {
@@ -372,6 +431,13 @@ export default function Workspace() {
           breakpoints={breakpoints}
           onToggleBreakpoint={(line) => dispatch({ type: "toggleBreakpoint", line })}
           onChange={onChange}
+          maxLength={MAX_FILE_CHARS}
+          onLimit={() =>
+            showLimit(
+              "This file is at its size limit",
+              `Files can hold up to ${MAX_FILE_CHARS / 1000} KB of code.`,
+            )
+          }
           onRun={run}
           onCancel={cancel}
         />
@@ -535,6 +601,22 @@ export default function Workspace() {
       { id: "editor", size: "72", min: "40", node: editorPane },
       { id: "inspector", size: "28", min: "18", node: inspectorPane },
     ],
+  };
+
+  const hasInspector = panes[viewMode].some((pane) => pane.id === "inspector");
+  /**
+   * Starting sizes: a hidden inspector starts collapsed and the others share its space. Read
+   * once per layout, never from live state — changing `defaultSize` would re-apply the layout.
+   */
+  const startedOpen = useMemo(() => inspectorOpen, [viewMode, wide]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startSize = (pane: { id: string; size: string }): string => {
+    if (!hasInspector || startedOpen) return pane.size;
+    if (pane.id === "inspector") return "0";
+    const rest = panes[viewMode].reduce(
+      (sum, other) => (other.id === "inspector" ? sum : sum + Number(other.size)),
+      0,
+    );
+    return String((Number(pane.size) / rest) * 100);
   };
 
   const exportItems: MenuItem[] = [
@@ -724,15 +806,11 @@ export default function Workspace() {
             files={workspace.files}
             active={workspace.active}
             onOpen={openDoc}
-            onNewFile={(name, text) => {
-              flushEdit();
-              dispatch({ type: "create", id: newFileId(), name, source: text });
-            }}
+            onNewFile={(name, text) =>
+              addFile({ type: "create", id: newFileId(), name, source: text })
+            }
             onRename={(id, name) => dispatch({ type: "rename", id, name })}
-            onDuplicate={(id) => {
-              flushEdit();
-              dispatch({ type: "duplicate", id, newId: newFileId() });
-            }}
+            onDuplicate={(id) => addFile({ type: "duplicate", id, newId: newFileId() })}
             onDelete={(id) => dispatch({ type: "delete", id })}
             onResetWorkspace={() => {
               clearTimeout(saveTimer.current);
@@ -816,8 +894,7 @@ export default function Workspace() {
                 aria-label="New file"
                 title="New file"
                 onClick={() => {
-                  flushEdit();
-                  dispatch({ type: "create", id: newFileId() });
+                  addFile({ type: "create", id: newFileId() });
                 }}
                 className="press grid size-9 shrink-0 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink"
               >
@@ -852,6 +929,21 @@ export default function Workspace() {
                 </button>
               ))}
             </div>
+
+            {hasInspector && (
+              <button
+                type="button"
+                aria-pressed={inspectorOpen}
+                aria-label={inspectorOpen ? "Hide inspector" : "Show inspector"}
+                title={inspectorOpen ? "Hide inspector" : "Show inspector"}
+                onClick={toggleInspector}
+                className={`press grid size-10 shrink-0 place-items-center rounded-xl edge transition-colors hover:bg-surface-2 ${
+                  inspectorOpen ? "text-accent" : "text-muted hover:text-ink"
+                }`}
+              >
+                <PanelRight size={16} />
+              </button>
+            )}
 
             <Menu
               label="Language"
@@ -964,6 +1056,7 @@ export default function Workspace() {
             </div>
           </div>
 
+          <RunBanner message={storageNotice ?? limitNotice} />
           <Group orientation="vertical" className="min-h-0 flex-1" data-animating={animating}>
             <Panel id="main" minSize="35">
               <div className="flex h-full min-h-0 flex-col gap-3">
@@ -976,15 +1069,56 @@ export default function Workspace() {
                     transition={{ duration: 0.16 }}
                     className="min-h-0 flex-1"
                   >
-                    <Group orientation={wide ? "horizontal" : "vertical"} className="h-full">
-                      {panes[viewMode].map((pane, index) => (
-                        <Fragment key={pane.id}>
-                          {index > 0 && <Separator className={wide ? "w-3" : "h-3"} />}
-                          <Panel id={pane.id} defaultSize={pane.size} minSize={pane.min}>
-                            {pane.node}
-                          </Panel>
-                        </Fragment>
-                      ))}
+                    <Group
+                      orientation={wide ? "horizontal" : "vertical"}
+                      className="h-full"
+                      data-animating={animating}
+                    >
+                      {panes[viewMode].map((pane, index) => {
+                        const isInspector = pane.id === "inspector";
+                        const hidden = isInspector && !inspectorOpen;
+                        return (
+                          <Fragment key={pane.id}>
+                            {index > 0 && (
+                              <Separator
+                                className={`transition-[width,height] duration-300 ${
+                                  hidden
+                                    ? `pointer-events-none ${wide ? "w-0" : "h-0"}`
+                                    : wide
+                                      ? "w-3"
+                                      : "h-3"
+                                }`}
+                              />
+                            )}
+                            <Panel
+                              id={pane.id}
+                              panelRef={isInspector ? inspectorPanel : undefined}
+                              defaultSize={startSize(pane)}
+                              minSize={pane.min}
+                              collapsible={isInspector}
+                              collapsedSize={0}
+                              onResize={
+                                isInspector
+                                  ? () => {
+                                      if (toggling.current) return;
+                                      setInspectorOpen(
+                                        !(inspectorPanel.current?.isCollapsed() ?? false),
+                                      );
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {isInspector ? (
+                                <div className="h-full" inert={hidden}>
+                                  {pane.node}
+                                </div>
+                              ) : (
+                                pane.node
+                              )}
+                            </Panel>
+                          </Fragment>
+                        );
+                      })}
                     </Group>
                   </motion.div>
                 </AnimatePresence>
