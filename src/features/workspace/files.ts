@@ -232,14 +232,13 @@ export const workspaceReducer = (
 // ---------------------------------------------------------------- persistence
 
 const STORAGE_KEY = "reify:workspace:v1";
-const LEGACY_DRAFT_KEY = "learncode:draft:v2";
 
-const STARTER_FILES = (legacySource?: string, legacySuite?: TestSuite): WorkspaceFile[] => [
+const STARTER_FILES = (): WorkspaceFile[] => [
   {
     id: "index",
     name: "index.js",
-    source: legacySource ?? STARTER_SOURCE,
-    suite: legacySuite ?? STARTER_SUITE,
+    source: STARTER_SOURCE,
+    suite: STARTER_SUITE,
   },
   {
     id: "utils",
@@ -289,12 +288,6 @@ export const loadWorkspace = (): WorkspaceState => {
       );
       const active = isRef(parsed.active) && exists(base, parsed.active) ? parsed.active : tabs[0];
       return active ? open({ ...base, tabs }, active) : base;
-    }
-    const legacy = localStorage.getItem(LEGACY_DRAFT_KEY);
-    if (legacy) {
-      const draft = JSON.parse(legacy) as { source?: unknown; suite?: TestSuite };
-      if (typeof draft.source === "string")
-        return initialWorkspace(STARTER_FILES(draft.source, draft.suite ?? STARTER_SUITE));
     }
   } catch {
     // Corrupt or unavailable storage: start fresh.

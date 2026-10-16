@@ -4,7 +4,7 @@ import type { DiagnosticLog } from "./tables";
 
 /**
  * Rejects constructs the tracer cannot follow faithfully. Rejecting is preferred over
- * producing an incomplete or misleading trace. See docs/supported-javascript.md.
+ * producing an incomplete or misleading trace.
  */
 export const unsupportedVisitor = (log: DiagnosticLog): Visitor => ({
   Function(path) {

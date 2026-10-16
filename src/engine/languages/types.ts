@@ -24,10 +24,3 @@ export interface LanguageRuntime {
   /** Runs one test case against a fresh program instance. Must not throw. */
   runTest(code: string, suite: TestSuite, testCase: TestCase, limits: ExecutionLimits): TestResult;
 }
-
-/** UI-facing description of a language (safe to import on the main thread). */
-export interface LanguageDescriptor {
-  readonly id: string;
-  readonly label: string;
-  readonly fileName: string;
-}

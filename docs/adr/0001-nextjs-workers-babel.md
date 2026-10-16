@@ -20,7 +20,7 @@ execution engine must stay independent of any UI framework.
 - **A typed `postMessage` protocol instead of an RPC library** such as Comlink: runs stream
   batched events and are killed rather than awaited, and every message must be checked against
   the active run id.
-- **XState only for the lifecycle; no Zustand yet.** History lives in the `TraceStore`.
+- **XState only for the lifecycle.** History lives in the `TraceStore`.
 - **No Rust/WASM yet.** It is introduced only for a hot path that measurements identify
   (`performance.md`: event transfer is the current candidate).
 

@@ -2,7 +2,7 @@ import type { LanguageCompiler, LanguageRuntime } from "./types";
 
 /**
  * Worker-side language registry. Compilers and runtimes are created lazily inside their
- * workers so unused languages cost nothing. Add a language here and in `catalog.ts`.
+ * workers so unused languages cost nothing. Add a language here.
  */
 
 type Factory<T> = (languageId: string) => Promise<T>;

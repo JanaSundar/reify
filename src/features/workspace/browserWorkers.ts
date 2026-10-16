@@ -23,14 +23,14 @@ export const browserWorkers: WorkerFactories = {
     adapt(
       new Worker(new URL("../../engine/workers/compiler.worker.ts", import.meta.url), {
         type: "module",
-        name: "learncode-compiler",
+        name: "reify-compiler",
       }),
     ),
   runtime: () =>
     adapt(
       new Worker(new URL("../../engine/workers/runtime.worker.ts", import.meta.url), {
         type: "module",
-        name: "learncode-runtime",
+        name: "reify-runtime",
       }),
     ),
 };
