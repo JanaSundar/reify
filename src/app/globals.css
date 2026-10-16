@@ -466,3 +466,20 @@ pre,
     display: block;
   }
 }
+
+/* Hairline edges drawn inside the box (no layout shift): `edge`, `edge-strong`, ... */
+@utility edge {
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+@utility edge-strong {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+@utility edge-accent {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+@utility edge-blue {
+  box-shadow: inset 0 0 0 1px var(--blue-line);
+}
+@utility edge-violet {
+  box-shadow: inset 0 0 0 1px var(--violet-line);
+}

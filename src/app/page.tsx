@@ -242,7 +242,7 @@ export default function HomePage() {
                     from={{ x: 20 }}
                     className="flex items-center gap-4"
                   >
-                    <span className="grid size-9 place-items-center rounded-lg text-ink shadow-[inset_0_0_0_1px_var(--border-strong)]">
+                    <span className="grid size-9 place-items-center rounded-lg text-ink edge-strong">
                       <Icon size={18} strokeWidth={1.6} />
                     </span>
                     <div>

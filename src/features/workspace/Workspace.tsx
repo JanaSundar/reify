@@ -57,6 +57,7 @@ import {
 import { bannerFor, RunBanner } from "./RunBanner";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
+import { easeOut, FADE_UP, SWAP_Y } from "@/components/motion";
 
 const VIEW_MODES = ["visual", "split", "code"] as const;
 type ViewMode = (typeof VIEW_MODES)[number];
@@ -76,11 +77,10 @@ const SAVE_DELAY_MS = 400;
 /** Height of the bottom drawer's tab bar; the drawer collapses down to it. */
 const DRAWER_BAR_PX = 46;
 const TOGGLE_ANIMATION_MS = 340;
-const EASE = [0.23, 1, 0.32, 1] as const;
 
-const card = "rounded-2xl bg-surface shadow-[inset_0_0_0_1px_var(--border)]";
+const card = "rounded-2xl bg-surface edge";
 const outlineButton =
-  "press flex h-10 items-center gap-2 rounded-xl px-3.5 text-[13px] text-ink shadow-[inset_0_0_0_1px_var(--border)] transition-colors hover:bg-surface-2";
+  "press flex h-10 items-center gap-2 rounded-xl px-3.5 text-[13px] text-ink edge transition-colors hover:bg-surface-2";
 
 /** Reads `?example=…&autorun=trace|tests&step=N&tab=…` once (examples, demos, shared links). */
 const readLaunchOptions = () => {
@@ -653,10 +653,8 @@ export default function Workspace() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={drawerTab}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15, ease: EASE }}
+            {...FADE_UP}
+            transition={easeOut(0.15)}
             className="min-h-full"
           >
             {drawerTab === "log" && (
@@ -717,7 +715,7 @@ export default function Workspace() {
           aria-label="Sidebar"
           initial={false}
           animate={{ width: sidebarOpen && wide ? 232 : 0, opacity: sidebarOpen && wide ? 1 : 0 }}
-          transition={{ duration: 0.25, ease: EASE }}
+          transition={easeOut(0.25)}
           className="shrink-0 overflow-hidden border-r border-border"
           inert={!(sidebarOpen && wide)}
         >
@@ -753,12 +751,9 @@ export default function Workspace() {
               onClick={() => setSidebarOpen(!sidebarOpen)}
               aria-label={sidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}
               title={sidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}
-              className="press hidden size-10 place-items-center rounded-xl text-muted shadow-[inset_0_0_0_1px_var(--border)] hover:text-ink lg:grid"
+              className="press hidden size-10 place-items-center rounded-xl text-muted edge hover:text-ink lg:grid"
             >
-              <motion.span
-                animate={{ rotate: sidebarOpen ? 0 : 180 }}
-                transition={{ duration: 0.25, ease: EASE }}
-              >
+              <motion.span animate={{ rotate: sidebarOpen ? 0 : 180 }} transition={easeOut(0.25)}>
                 <PanelLeft size={16} />
               </motion.span>
             </button>
@@ -780,7 +775,7 @@ export default function Workspace() {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
-                      transition={{ duration: 0.18, ease: EASE }}
+                      transition={easeOut(0.18)}
                       className={`group flex h-10 shrink-0 items-center gap-2 rounded-xl pr-2 pl-3 text-[13px] transition-colors ${
                         active ? `${card} text-ink` : "text-muted hover:bg-surface-2 hover:text-ink"
                       }`}
@@ -833,7 +828,7 @@ export default function Workspace() {
             <div
               role="radiogroup"
               aria-label="View mode"
-              className="mx-auto flex rounded-xl p-1 shadow-[inset_0_0_0_1px_var(--border)]"
+              className="mx-auto flex rounded-xl p-1 edge"
             >
               {VIEW_MODES.map((mode) => (
                 <button
@@ -916,10 +911,8 @@ export default function Workspace() {
                   type="button"
                   onClick={busy ? cancel : run}
                   disabled={status === "cancelling"}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.15, ease: EASE }}
+                  {...SWAP_Y}
+                  transition={easeOut(0.15)}
                   whileTap={{ scale: 0.97 }}
                   title={busy ? "Stop (Esc)" : "Run (Ctrl+Enter)"}
                   className="flex items-center gap-2 px-4 text-[13px] font-medium"
@@ -1029,7 +1022,7 @@ export default function Workspace() {
               initial={{ opacity: 0, scale: 0.985 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.985 }}
-              transition={{ duration: 0.2, ease: EASE }}
+              transition={easeOut(0.2)}
               className="fixed inset-0 z-40 bg-bg p-3"
               role="dialog"
               aria-modal="true"

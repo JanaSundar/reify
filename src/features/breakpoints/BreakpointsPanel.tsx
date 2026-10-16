@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { easeOut } from "@/components/motion";
 
 interface BreakpointsPanelProps {
   readonly lines: readonly number[];
@@ -32,7 +33,7 @@ export function BreakpointsPanel({ lines, source, onRemove, onClear }: Breakpoin
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+              transition={easeOut(0.18)}
               className="group flex items-center gap-3 overflow-hidden px-5 py-1.5 hover:bg-surface-2"
             >
               <span className="size-2 shrink-0 rounded-full bg-accent" />

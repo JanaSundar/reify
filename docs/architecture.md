@@ -91,6 +91,27 @@ Seeking clones the nearest snapshot at or before the target step and replays at 
 snapshot interval of events. Snapshot density halves automatically when `maxSnapshots` is
 exceeded. Playback never re-runs user code.
 
+## Visualization primitives
+
+`src/features/viz` draws values from the recorded `StepView`; there is no second model of
+runtime state. `ValueView` (inspector) picks the primitive from the heap object's runtime
+kind: `ArrayView` (indexed cells, matrix for grids), `ObjectView` and `MapView` (shared
+`EntryRows`: `:` for properties, `→` for typed map keys), `SetView` (value chips).
+
+- **Changes** come from `StepView.mutations`: each object mutated in a step with its state
+  before the step and the operation. `changesOf` turns that into added/updated entries,
+  removals and "no change" (e.g. `Set.add` of a present value).
+- **Identity**: map rows by key, set chips by value, object rows by name, nodes by heap id.
+  List cells get presentation-only keys from `reconcileKeys` (permutations move cells, slot
+  writes change values in place, length changes align with an LCS). Keys never feed back
+  into runtime state, and `AnimatePresence` only keeps exiting elements visually.
+- **Structures**: `recognizeStructure` infers linked lists (`next`) and trees
+  (`left`/`right`, `children`) from shape only when every node matches, nothing is shared
+  and the size is bounded; the UI labels them "inferred" and can show the plain object.
+  Anything ambiguous stays an object.
+- **Motion**: presets in `viz/atoms.tsx` (short tweens, no overshoot); reduced motion is
+  honoured globally by `MotionProvider`.
+
 ## Adding a language
 
 1. Implement `LanguageCompiler` and `LanguageRuntime` under `src/engine/languages/<id>/`,

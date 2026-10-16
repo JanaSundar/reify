@@ -3,12 +3,11 @@
 import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 import { useRef } from "react";
 import { CodeText } from "./MiniCode";
+import { easeOut } from "@/components/motion";
 
 const LOOP = `for (let i = 0; i < 3; i++) {
   console.log(i);
 }`;
-
-const EASE = [0.23, 1, 0.32, 1] as const;
 
 function DarkWindow({ className, children }: { className: string; children?: React.ReactNode }) {
   return (
@@ -47,7 +46,7 @@ export function WorkspaceGraphic() {
       initial={{ opacity: 0, x: -60 }}
       whileInView={{ opacity: 1, x: 0 }}
       viewport={{ once: true, margin: "0px 0px -15% 0px" }}
-      transition={{ duration: 0.9, ease: EASE }}
+      transition={easeOut(0.9)}
       className="relative aspect-[6/5] w-full [perspective:1600px]"
       aria-hidden
     >

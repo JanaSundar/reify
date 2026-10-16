@@ -1,11 +1,21 @@
-import type { EncodedValue, HeapId, HeapObject } from "../protocol/values";
+import {
+  capturedCount,
+  entryCount,
+  type EncodedValue,
+  type HeapId,
+  type HeapObject,
+} from "../protocol/values";
 
 type Heap = ReadonlyMap<HeapId, HeapObject>;
 
 const MAX_PREVIEW_ITEMS = 6;
 
-const more = (count: number, omitted = 0): string =>
-  count > MAX_PREVIEW_ITEMS || omitted > 0 ? ", …" : "";
+const more = (object: HeapObject): string =>
+  capturedCount(object) > MAX_PREVIEW_ITEMS || object.omitted ? ", …" : "";
+
+/** Type name with the collection's runtime size, e.g. `Map(2)`, `Array(3)`. */
+export const sizedTypeName = (object: HeapObject): string =>
+  `${object.typeName}(${entryCount(object)})`;
 
 /**
  * Short, single-line description of a value, e.g. `[1, 2, 3]`, `Map(2)`, `ListNode#4`.
@@ -20,14 +30,14 @@ export const previewValue = (value: EncodedValue, heap: Heap, depth = 0): string
 
   switch (object.kind) {
     case "list":
-      return `[${object.items.slice(0, MAX_PREVIEW_ITEMS).map(nested).join(", ")}${more(object.items.length, object.omitted)}]`;
+      return `[${object.items.slice(0, MAX_PREVIEW_ITEMS).map(nested).join(", ")}${more(object)}]`;
     case "set":
-      return `${object.typeName}(${object.items.length + (object.omitted ?? 0)}) {${object.items.slice(0, MAX_PREVIEW_ITEMS).map(nested).join(", ")}${more(object.items.length, object.omitted)}}`;
+      return `${sizedTypeName(object)} {${object.items.slice(0, MAX_PREVIEW_ITEMS).map(nested).join(", ")}${more(object)}}`;
     case "map":
-      return `${object.typeName}(${object.entries.length + (object.omitted ?? 0)}) {${object.entries
+      return `${sizedTypeName(object)} {${object.entries
         .slice(0, MAX_PREVIEW_ITEMS)
         .map(([k, v]) => `${nested(k)} => ${nested(v)}`)
-        .join(", ")}${more(object.entries.length, object.omitted)}}`;
+        .join(", ")}${more(object)}}`;
     case "record":
     case "instance": {
       const prefix = object.kind === "instance" ? `${object.typeName} ` : "";
@@ -35,7 +45,7 @@ export const previewValue = (value: EncodedValue, heap: Heap, depth = 0): string
       return `${prefix}{${object.fields
         .slice(0, MAX_PREVIEW_ITEMS)
         .map(([k, v]) => `${k}: ${nested(v)}`)
-        .join(", ")}${more(object.fields.length, object.omitted)}}`;
+        .join(", ")}${more(object)}}`;
     }
     case "callable":
       return `ƒ ${object.name}`;

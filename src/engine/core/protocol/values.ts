@@ -96,6 +96,44 @@ export const UNDEFINED_VALUE: PrimitiveValue = primitive("undefined", "undefined
 
 export const isRef = (value: EncodedValue): value is RefValue => value.kind === "ref";
 
+/** Entries actually captured: list and set items, map entries or record fields. */
+export const capturedCount = (object: HeapObject): number => {
+  switch (object.kind) {
+    case "list":
+    case "set":
+      return object.items.length;
+    case "map":
+      return object.entries.length;
+    case "record":
+    case "instance":
+      return object.fields.length;
+    case "callable":
+    case "opaque":
+      return 0;
+  }
+};
+
+/** Size of the collection at runtime, including entries not captured because of limits. */
+export const entryCount = (object: HeapObject): number =>
+  capturedCount(object) + (object.omitted ?? 0);
+
+/** Every value an object holds (map keys included), in order. */
+export const childValues = (object: HeapObject): EncodedValue[] => {
+  switch (object.kind) {
+    case "list":
+    case "set":
+      return object.items;
+    case "map":
+      return object.entries.flat();
+    case "record":
+    case "instance":
+      return object.fields.map(([, value]) => value);
+    case "callable":
+    case "opaque":
+      return [];
+  }
+};
+
 /** Copies a heap object so the copy can be mutated without touching the original. */
 export const cloneHeapObject = (object: HeapObject): HeapObject => {
   switch (object.kind) {
