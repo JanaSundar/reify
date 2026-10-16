@@ -19,6 +19,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { posthog } from "posthog-js";
 import {
   Group,
   Panel,
@@ -92,6 +93,18 @@ const LIMIT_NOTICE_MS = 6000;
 const card = "rounded-2xl bg-surface edge";
 const outlineButton =
   "press flex h-10 items-center gap-2 rounded-xl px-3.5 text-[13px] text-ink edge transition-colors hover:bg-surface-2";
+
+const capture = (event: string, properties?: Record<string, string | number>) => {
+  if (!process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN || !process.env.NEXT_PUBLIC_POSTHOG_HOST)
+    return;
+  posthog.capture(event, properties);
+};
+
+const posthogLog = (body: string, attributes?: Record<string, string | number>) => {
+  if (!process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN || !process.env.NEXT_PUBLIC_POSTHOG_HOST)
+    return;
+  posthog.logger.info(body, attributes);
+};
 
 /** Reads `?example=…&autorun=trace|tests&step=N&tab=…` once (examples, demos, shared links). */
 const readLaunchOptions = () => {
@@ -199,6 +212,7 @@ export default function Workspace() {
     }
     flushEdit();
     dispatch(action);
+    capture(action.type === "create" ? "workspace_file_created" : "workspace_file_duplicated");
   };
   useEffect(() => {
     if (launch.tab) setDrawerTab(launch.tab);
@@ -229,16 +243,33 @@ export default function Workspace() {
   const run = () => {
     flushEdit();
     setTracedSource(source.current);
+    capture("code_run_started", {
+      language: languageId,
+      document_kind: doc.ref.kind,
+    });
+    posthogLog("workspace execution started", {
+      language: languageId,
+      document_kind: doc.ref.kind,
+    });
     actor.send({ type: "RUN", source: source.current, languageId });
   };
   const runTests = () => {
     flushEdit();
     setDrawerTab("tests");
     if (!drawerOpen) toggleDrawer();
+    capture("test_suite_run_started", {
+      language: languageId,
+      test_case_count: suite.cases.length,
+    });
+    posthogLog("workspace test suite started", {
+      language: languageId,
+      test_case_count: suite.cases.length,
+    });
     actor.send({ type: "RUN", source: source.current, languageId, suite });
   };
   const traceCase = (testCase: TestCase) => {
     setTracedSource(source.current);
+    capture("test_case_trace_started", { language: languageId });
     actor.send({
       type: "RUN",
       source: traceSourceFor(source.current, suite, testCase),
@@ -247,6 +278,8 @@ export default function Workspace() {
   };
   const cancel = (): boolean => {
     if (status !== "running") return false;
+    capture("execution_cancelled");
+    posthogLog("workspace execution cancelled");
     actor.send({ type: "CANCEL" });
     return true;
   };
@@ -328,7 +361,7 @@ export default function Workspace() {
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       if (event.key === "Escape" && actor.getSnapshot().matches({ active: "running" })) {
-        actor.send({ type: "CANCEL" });
+        cancel();
       } else if (mod && event.shiftKey && event.key === "Enter") {
         event.preventDefault();
         runTests();
@@ -811,12 +844,16 @@ export default function Workspace() {
             }
             onRename={(id, name) => dispatch({ type: "rename", id, name })}
             onDuplicate={(id) => addFile({ type: "duplicate", id, newId: newFileId() })}
-            onDelete={(id) => dispatch({ type: "delete", id })}
+            onDelete={(id) => {
+              dispatch({ type: "delete", id });
+              capture("workspace_file_deleted");
+            }}
             onResetWorkspace={() => {
               clearTimeout(saveTimer.current);
               saveTimer.current = undefined;
               dispatch({ type: "reset" });
               setGeneration((n) => n + 1);
+              capture("workspace_reset");
             }}
           />
         </motion.aside>
@@ -964,7 +1001,10 @@ export default function Workspace() {
                   ),
                   hint: languageId === "javascript" ? "✓" : undefined,
                   disabled: doc.ref.kind === "example" && languageId !== "javascript",
-                  onSelect: () => dispatch({ type: "language", languageId: "javascript" }),
+                  onSelect: () => {
+                    dispatch({ type: "language", languageId: "javascript" });
+                    capture("language_changed", { language: "javascript" });
+                  },
                 },
                 {
                   label: "TypeScript",
@@ -980,7 +1020,10 @@ export default function Workspace() {
                         ? "files only"
                         : undefined,
                   disabled: doc.ref.kind === "example",
-                  onSelect: () => dispatch({ type: "language", languageId: "typescript" }),
+                  onSelect: () => {
+                    dispatch({ type: "language", languageId: "typescript" });
+                    capture("language_changed", { language: "typescript" });
+                  },
                 },
                 {
                   label: "Python",
