@@ -1,8 +1,10 @@
 "use client";
 
-import { Play, Plus, Trash2, Footprints } from "lucide-react";
+import { Download, Footprints, Play, Plus, Trash2, Upload } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/Button";
+import { InlineConfirm } from "@/components/InlineConfirm";
 import { Segmented } from "@/components/Segmented";
 import type {
   TestCase,
@@ -11,7 +13,9 @@ import type {
   TestSuite,
   TestTarget,
 } from "@/engine/core/protocol/testing";
+import { downloadText } from "@/lib/download";
 import { addCase, removeCase, summarize, updateCase } from "./suite";
+import { MAX_SUITE_FILE_CHARS, parseSuiteFile, suiteTemplate } from "./suiteFile";
 
 interface TestsPanelProps {
   readonly suite: TestSuite;
@@ -171,6 +175,31 @@ export function TestsPanel({
       : [suite.entry, ...functionNames];
   const progress = summary.total === 0 ? 0 : summary.passed / summary.total;
 
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  /** A parsed upload waiting for the user to confirm replacing their existing cases. */
+  const [pending, setPending] = useState<TestSuite | null>(null);
+
+  const readFile = async (file: File) => {
+    setUploadError(null);
+    setPending(null);
+    if (file.size > MAX_SUITE_FILE_CHARS * 4) {
+      setUploadError("That file is too large for a test suite.");
+      return;
+    }
+    const parsed = parseSuiteFile(await file.text());
+    if (!parsed.ok) setUploadError(parsed.error);
+    else if (suite.cases.length > 0) setPending(parsed.suite);
+    else onChange(parsed.suite);
+  };
+
+  const downloadTemplate = () =>
+    downloadText(
+      "reify-tests-template.json",
+      suiteTemplate(suite.entry || functionNames[0] || ""),
+      "application/json",
+    );
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-end gap-3">
@@ -199,7 +228,54 @@ export function TestsPanel({
             onChange={(target) => onChange({ ...suite, target })}
           />
         </div>
+        <div className="ml-auto flex items-center gap-1">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="Upload a test suite JSON file"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void readFile(file);
+            }}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fileInput.current?.click()}
+            title="Load test cases from a JSON file"
+          >
+            <Upload size={14} /> Upload JSON
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={downloadTemplate}
+            title="Download a starter JSON file to edit and upload"
+          >
+            <Download size={14} /> Template
+          </Button>
+        </div>
       </div>
+
+      {uploadError && (
+        <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-[12.5px] text-danger">
+          {uploadError}
+        </p>
+      )}
+      {pending && (
+        <InlineConfirm
+          message={`Replace your ${suite.cases.length} ${suite.cases.length === 1 ? "case" : "cases"} with the ${pending.cases.length} from the file?`}
+          confirmLabel="Replace"
+          onConfirm={() => {
+            onChange(pending);
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
 
       <AnimatePresence initial={false}>
         {results.length > 0 && (
