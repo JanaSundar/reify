@@ -1,5 +1,5 @@
 /**
- * Phase 0 spike (ADR 0002): the v1 tracer shape — pure Python appending event words to an
+ * Pyodide spike: the v1 tracer shape — pure Python appending event words to an
  * `array("i")` that JS reads as one buffer per flush — plus a hand-instrumented `fib`.
  * Throwaway: the real tracer and instrumenter replace this.
  */

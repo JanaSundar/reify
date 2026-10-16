@@ -47,7 +47,6 @@ Skip them once with `git commit --no-verify` or `LEFTHOOK=0 git push`.
 - [Architecture](docs/architecture.md): subsystems, instrumentation rules, replay
 - [Execution safety](docs/security.md): guarantees and limitations
 - [Performance baselines](docs/performance.md)
-- [ADR 0001](docs/adr/0001-nextjs-workers-babel.md): Next.js, workers, Babel
 
 ## License
 

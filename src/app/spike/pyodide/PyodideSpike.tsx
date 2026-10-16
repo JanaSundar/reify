@@ -66,7 +66,7 @@ export function PyodideSpike() {
 
   return (
     <main className="mx-auto max-w-4xl p-6 font-mono text-sm">
-      <h1 className="mb-2 text-lg">Pyodide spike (ADR 0002, phase 0)</h1>
+      <h1 className="mb-2 text-lg">Pyodide spike</h1>
       <p className="mb-4">
         Each run starts a fresh worker, as the runtime does. fib(25), traced with the word-buffer
         tracer.

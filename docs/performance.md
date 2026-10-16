@@ -48,7 +48,7 @@ Design decisions, each checked against these benchmarks:
 - **Equal primitive values share one decoded object per batch.** Measured alternatives: no
   sharing decodes at the same speed but allocates an object per value; a `Map` cache was slower
   (10.3 ms decode for n=200).
-- **No Rust/WASM encoder (no ADR 0002).** The JS encoder costs about as much as traced
+- **No Rust/WASM encoder.** The JS encoder costs about as much as traced
   execution (8.1 vs 8.3 ms) and is no longer the bottleneck: trace store ingestion (12.3 ms) is
   the largest main-thread stage. Most of the encoder's time is spent walking JS event objects,
   which a WASM encoder would still have to do across the JS/WASM boundary, so it would add a
