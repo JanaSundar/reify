@@ -354,7 +354,7 @@ export default function Workspace() {
       if (event.defaultPrevented) return;
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
-      if (event.key === "Escape" && actor.getSnapshot().matches({ active: "running" })) {
+      if (event.key === "Escape" && actor.getSnapshot().can({ type: "CANCEL" })) {
         cancel();
       } else if (mod && event.shiftKey && event.key === "Enter") {
         event.preventDefault();

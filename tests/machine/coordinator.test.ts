@@ -204,7 +204,7 @@ const startMachine = () => {
       actions: { clearTrace: () => env.store.clear() },
     }),
   ).start();
-  const status = () => statusOf(actor.getSnapshot().value);
+  const status = () => statusOf(actor.getSnapshot());
   return { ...env, actor, status };
 };
 
