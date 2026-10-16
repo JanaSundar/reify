@@ -9,7 +9,7 @@ const BG = "#fbfaf8"; // --bg (light)
 const markLight = await readFile(`${BRAND}/reify-mark-light.svg`);
 const markDark = await readFile(`${BRAND}/reify-mark-dark.svg`);
 
-/** The mark rendered to fit a `size`×`size` box (it is wider than tall), transparent. */
+/** The mark rendered to fit a `size`×`size` box (it is taller than wide), transparent. */
 const renderMark = (svg, size) =>
   sharp(svg, { density: 1200 })
     .resize({
@@ -83,7 +83,7 @@ const svgBody = (svg) =>
  * on dark. Both originals are embedded as-is (their element ids don't collide).
  */
 const themedSvg = () => {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -31.5 326 326">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 7 78 96">
 <style>.dark{display:none}@media (prefers-color-scheme:dark){.light{display:none}.dark{display:inline}}</style>
 <g class="light">${svgBody(markLight)}</g>
 <g class="dark">${svgBody(markDark)}</g>
