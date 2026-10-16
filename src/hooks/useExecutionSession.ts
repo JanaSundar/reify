@@ -63,7 +63,7 @@ export function useTraceSnapshot(store: TraceStore): TraceSnapshot {
 }
 
 export function useExecutionStatus(actor: ExecutionActor): ExecutionStatus {
-  return useSelector(actor, (snapshot) => statusOf(snapshot.value));
+  return useSelector(actor, (snapshot) => statusOf(snapshot));
 }
 
 export function useExecutionContext(actor: ExecutionActor): ExecutionContext {

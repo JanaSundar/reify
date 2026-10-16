@@ -1,4 +1,12 @@
-import { assign, fromCallback, sendTo, setup, type ActorRefFrom, type StateValue } from "xstate";
+import {
+  assertEvent,
+  assign,
+  fromCallback,
+  sendTo,
+  setup,
+  type ActorRefFrom,
+  type SnapshotFrom,
+} from "xstate";
 import type {
   ExecutionCoordinator,
   RunFailure,
@@ -43,6 +51,14 @@ export type ExecutionEvent =
   | { type: "EXECUTION_CANCELLED"; runId: number };
 
 type WorkerEvent = Extract<ExecutionEvent, { runId: number }>;
+type RunEvent = Extract<ExecutionEvent, { type: "RUN" }>;
+
+/** The run request a RUN event asks for (the run id is assigned by the machine). */
+const requestOf = ({ source, languageId, suite }: RunEvent): Omit<RunRequest, "runId"> => ({
+  source,
+  languageId,
+  suite,
+});
 
 /** The invoked actor: bridges one run of the coordinator into machine events. */
 export const createExecutionActor = (coordinator: ExecutionCoordinator) =>
@@ -80,6 +96,9 @@ const INITIAL_CONTEXT: ExecutionContext = {
 /** How long `cancelling` waits for the worker to acknowledge before giving up on it. */
 export const CANCEL_GRACE_MS = 2_000;
 
+/** RUN from any settled state starts a fresh run. */
+const START_RUN = { RUN: { target: "active", actions: "startRun" } } as const;
+
 export const executionMachine = setup({
   types: {
     context: {} as ExecutionContext,
@@ -93,25 +112,26 @@ export const executionMachine = setup({
     // Replaced via `.provide()` to clear the trace store.
     clearTrace: () => undefined,
     startRun: assign(({ context, event }) => {
-      if (event.type !== "RUN") return {};
+      assertEvent(event, "RUN");
       return {
         ...INITIAL_CONTEXT,
         runId: context.runId + 1,
-        request: { source: event.source, languageId: event.languageId, suite: event.suite },
+        request: requestOf(event),
         phase: "compiling" as const,
         analysis: context.analysis,
         testResults: event.suite ? [] : context.testResults,
       };
     }),
     resetContext: assign(({ context }) => ({ ...INITIAL_CONTEXT, runId: context.runId })),
-    recordAnalysis: assign(({ event }) =>
-      event.type === "EXECUTION_COMPILED" ? { analysis: event.analysis } : {},
-    ),
-    recordTestResult: assign(({ context, event }) =>
-      event.type === "EXECUTION_TEST_RESULT"
-        ? { testResults: [...context.testResults, event.result] }
-        : {},
-    ),
+    clearPhase: assign({ phase: null }),
+    recordAnalysis: assign(({ event }) => {
+      assertEvent(event, "EXECUTION_COMPILED");
+      return { analysis: event.analysis };
+    }),
+    recordTestResult: assign(({ context, event }) => {
+      assertEvent(event, "EXECUTION_TEST_RESULT");
+      return { testResults: [...context.testResults, event.result] };
+    }),
   },
   guards: {
     isCurrentRun: ({ context, event }) => "runId" in event && event.runId === context.runId,
@@ -124,15 +144,19 @@ export const executionMachine = setup({
     RESET: { target: ".idle", actions: ["clearTrace", "resetContext"] },
   },
   states: {
-    idle: {
-      on: { RUN: { target: "active", actions: "startRun" } },
-    },
+    idle: { on: START_RUN },
     active: {
       invoke: {
         id: "executor",
         src: "execution",
-        input: ({ context }) => ({ runId: context.runId, ...context.request! }),
+        // `active` is only entered through RUN; `startRun` has already assigned the run id.
+        input: ({ context, event }) => {
+          assertEvent(event, "RUN");
+          return { runId: context.runId, ...requestOf(event) };
+        },
       },
+      // Leaving `active` (settled, reset or restarted) always ends the current phase.
+      exit: "clearPhase",
       initial: "running",
       on: {
         EXECUTION_COMPILED: { guard: "isCurrentRun", actions: "recordAnalysis" },
@@ -140,22 +164,14 @@ export const executionMachine = setup({
         EXECUTION_COMPLETE: {
           guard: "isCurrentRun",
           target: "completed",
-          actions: assign(({ event }) => ({
-            outcome: event.outcome,
-            stats: event.stats,
-            phase: null,
-          })),
+          actions: assign(({ event }) => ({ outcome: event.outcome, stats: event.stats })),
         },
         EXECUTION_ERROR: {
           guard: "isCurrentRun",
           target: "failed",
-          actions: assign(({ event }) => ({ failure: event.failure, phase: null })),
+          actions: assign(({ event }) => ({ failure: event.failure })),
         },
-        EXECUTION_CANCELLED: {
-          guard: "isCurrentRun",
-          target: "cancelled",
-          actions: assign({ phase: null }),
-        },
+        EXECUTION_CANCELLED: { guard: "isCurrentRun", target: "cancelled" },
       },
       states: {
         running: {
@@ -174,20 +190,14 @@ export const executionMachine = setup({
         },
         cancelling: {
           after: {
-            [CANCEL_GRACE_MS]: { target: "#execution.cancelled", actions: assign({ phase: null }) },
+            [CANCEL_GRACE_MS]: { target: "#execution.cancelled" },
           },
         },
       },
     },
-    completed: {
-      on: { RUN: { target: "active", actions: "startRun" } },
-    },
-    failed: {
-      on: { RUN: { target: "active", actions: "startRun" } },
-    },
-    cancelled: {
-      on: { RUN: { target: "active", actions: "startRun" } },
-    },
+    completed: { on: START_RUN },
+    failed: { on: START_RUN },
+    cancelled: { on: START_RUN },
   },
 });
 
@@ -202,7 +212,10 @@ export type ExecutionStatus =
   | "failed"
   | "cancelled";
 
-export const statusOf = (value: StateValue): ExecutionStatus => {
-  if (typeof value === "string") return value as ExecutionStatus;
-  return (value as { active?: string }).active === "cancelling" ? "cancelling" : "running";
+const SETTLED = ["idle", "completed", "failed", "cancelled"] as const;
+
+export const statusOf = (snapshot: SnapshotFrom<typeof executionMachine>): ExecutionStatus => {
+  if (snapshot.matches({ active: "cancelling" })) return "cancelling";
+  if (snapshot.matches("active")) return "running";
+  return SETTLED.find((state) => snapshot.matches(state)) ?? "idle";
 };
