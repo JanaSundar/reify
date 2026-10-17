@@ -33,6 +33,11 @@ export interface WorkspaceState {
   readonly files: readonly WorkspaceFile[];
   /** The file runs start from; null runs the open file (the lone-script behavior). */
   readonly entry: string | null;
+  /**
+   * Folders created on purpose, so they can be empty. A folder that holds files exists anyway
+   * (a folder is a path prefix); this list only keeps the empty ones.
+   */
+  readonly folders: readonly string[];
   readonly tabs: readonly DocRef[];
   /** The open document; null when every tab has been closed. */
   readonly active: DocRef | null;
@@ -70,6 +75,7 @@ export type WorkspaceAction =
       readonly source?: string;
     }
   | { readonly type: "rename"; readonly id: string; readonly name: string }
+  | { readonly type: "createFolder"; readonly path: string }
   | { readonly type: "renameFolder"; readonly from: string; readonly to: string }
   | { readonly type: "duplicate"; readonly id: string; readonly newId: string }
   | { readonly type: "delete"; readonly id: string }
@@ -236,6 +242,11 @@ const removeFiles = (state: WorkspaceState, ids: ReadonlySet<string>): Workspace
 
 const inFolder = (path: string, folder: string): boolean => path.startsWith(`${folder}/`);
 
+/** Whether a folder exists: created on purpose, or holding a file (or a folder that does). */
+const folderExists = (state: WorkspaceState, path: string): boolean =>
+  state.folders.some((f) => f === path || inFolder(f, path)) ||
+  state.files.some((file) => inFolder(file.path, path));
+
 export const workspaceReducer = (
   state: WorkspaceState,
   action: WorkspaceAction,
@@ -279,6 +290,11 @@ export const workspaceReducer = (
         path: uniquePath(others, requested.path),
       }));
     }
+    case "createFolder": {
+      const requested = normalizePath(action.path);
+      if (!requested.ok || folderExists(state, requested.path)) return state;
+      return { ...state, folders: [...state.folders, requested.path] };
+    }
     case "renameFolder": {
       const target = normalizePath(action.to.trim());
       if (!target.ok || target.path === action.from || inFolder(target.path, action.from))
@@ -297,6 +313,11 @@ export const workspaceReducer = (
           const index = moved.indexOf(file);
           return index < 0 ? file : { ...file, path: renamed[index]! };
         }),
+        folders: state.folders.map((folder) =>
+          folder === action.from || inFolder(folder, action.from)
+            ? `${target.path}${folder.slice(action.from.length)}`
+            : folder,
+        ),
       };
     }
     case "duplicate": {
@@ -308,10 +329,15 @@ export const workspaceReducer = (
     case "delete":
       return removeFiles(state, new Set([action.id]));
     case "deleteFolder":
-      return removeFiles(
-        state,
-        new Set(state.files.filter((f) => inFolder(f.path, action.path)).map((f) => f.id)),
-      );
+      return {
+        ...removeFiles(
+          state,
+          new Set(state.files.filter((f) => inFolder(f.path, action.path)).map((f) => f.id)),
+        ),
+        folders: state.folders.filter(
+          (folder) => folder !== action.path && !inFolder(folder, action.path),
+        ),
+      };
     case "entry":
       return action.id === null || state.files.some((file) => file.id === action.id)
         ? { ...state, entry: action.id }
@@ -407,6 +433,7 @@ export const initialWorkspace = (files: WorkspaceFile[] = STARTER_FILES()): Work
   return {
     files,
     entry: null,
+    folders: [],
     tabs: [active],
     active,
     exampleEdits: {},
@@ -468,7 +495,11 @@ export const loadWorkspace = (): WorkspaceState => {
       const files = migrateFiles(
         Array.isArray(parsed.files) ? parsed.files.filter(isSavedFile) : [],
       );
-      const base = { ...initialWorkspace(files), breakpoints: parsed.breakpoints ?? {} };
+      const folders = (Array.isArray(parsed.folders) ? parsed.folders : []).flatMap((folder) => {
+        const normalized = typeof folder === "string" ? normalizePath(folder) : null;
+        return normalized?.ok ? [normalized.path] : [];
+      });
+      const base = { ...initialWorkspace(files), folders, breakpoints: parsed.breakpoints ?? {} };
       const entry = files.some((file) => file.id === parsed.entry) ? (parsed.entry ?? null) : null;
       const tabs = (Array.isArray(parsed.tabs) ? parsed.tabs : []).filter(
         (ref): ref is DocRef => isRef(ref) && exists(base, ref),

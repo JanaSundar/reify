@@ -56,12 +56,12 @@ then (dynamic `import()` is rejected at compile time).
 
 ## In the playground
 
-- **Files are paths.** A workspace file's `path` is normalized and relative ("demo/stats/math.js");
-  folders exist only as path prefixes. To make a folder, name a file inside it: type
-  `lib/math.js` when creating or renaming a file, or use a folder's "New file here". A folder
-  disappears with its last file. Saved workspaces are `reify:workspace:v2`; a v1 save (free-form
-  names) is migrated on load (invalid names become `untitled.js`, collisions are numbered) and
-  left untouched in storage.
+- **Files are paths.** A workspace file's `path` is normalized and relative ("demo/stats/math.js").
+  Create a folder from the "+" menu (or a folder's "New folder here"); folders made this way are
+  kept even when empty. A folder that holds files exists anyway, so typing `lib/math.js` when
+  creating or renaming a file also creates `lib`. Saved workspaces are `reify:workspace:v2`; a
+  v1 save (free-form names) is migrated on load (invalid names become `untitled.js`, collisions
+  are numbered) and left untouched in storage.
 - **What Run runs.** The pinned _entry point_ (file menu → "Set as entry point", or the toolbar
   selector), otherwise the open file. A JavaScript or TypeScript entry is sent as a project; the
   compiler worker runs an entry that imports nothing as the lone script it always was (same

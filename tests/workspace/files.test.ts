@@ -381,3 +381,45 @@ describe("migrating saved files", () => {
     });
   });
 });
+
+describe("creating folders", () => {
+  const bare = (): WorkspaceState => ({
+    ...workspaceReducer(start(), { type: "reset" }),
+    files: [],
+  });
+
+  it("keeps an empty folder, so it can be created before any file", () => {
+    const state = workspaceReducer(bare(), { type: "createFolder", path: "./lib//utils" });
+    expect(state.folders).toEqual(["lib/utils"]);
+  });
+
+  it("ignores invalid paths and folders that already exist", () => {
+    let state = workspaceReducer(bare(), { type: "createFolder", path: "lib" });
+    expect(workspaceReducer(state, { type: "createFolder", path: "../x" })).toBe(state);
+    expect(workspaceReducer(state, { type: "createFolder", path: "lib" })).toBe(state);
+    state = workspaceReducer(state, { type: "create", id: "a", name: "src/a.js", source: "" });
+    expect(workspaceReducer(state, { type: "createFolder", path: "src" })).toBe(state);
+  });
+
+  it("follows a folder rename and goes with a folder delete", () => {
+    let state = workspaceReducer(bare(), { type: "createFolder", path: "lib/sub" });
+    state = workspaceReducer(state, { type: "createFolder", path: "keep" });
+    state = workspaceReducer(state, { type: "create", id: "a", name: "lib/a.js", source: "" });
+    state = workspaceReducer(state, { type: "renameFolder", from: "lib", to: "src" });
+    expect(state.folders).toEqual(["src/sub", "keep"]);
+    state = workspaceReducer(state, { type: "deleteFolder", path: "src" });
+    expect(state.folders).toEqual(["keep"]);
+  });
+
+  it("survives a reload", () => {
+    const items: Record<string, string> = {};
+    vi.stubGlobal("localStorage", {
+      setItem: (key: string, value: string) => (items[key] = value),
+      getItem: (key: string) => items[key] ?? null,
+    });
+    const state = workspaceReducer(bare(), { type: "createFolder", path: "empty/dir" });
+    saveWorkspace(state);
+    expect(loadWorkspace().folders).toEqual(["empty/dir"]);
+    vi.unstubAllGlobals();
+  });
+});

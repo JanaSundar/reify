@@ -1044,6 +1044,13 @@ export default function Workspace() {
               dispatch({ type: "renameFolder", from, to: checked.path });
               capture("workspace_folder_renamed", { files: before });
             }}
+            folders={workspace.folders}
+            onNewFolder={(path) => {
+              const checked = normalizePath(path);
+              if (!checked.ok) return notify("Can't create the folder", checked.message, "danger");
+              dispatch({ type: "createFolder", path: checked.path });
+              capture("workspace_folder_created");
+            }}
             onDeleteFolder={(path) => dispatch({ type: "deleteFolder", path })}
             onDuplicate={(id) => addFile({ type: "duplicate", id, newId: newFileId() })}
             onDelete={(id) => {

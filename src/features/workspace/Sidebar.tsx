@@ -33,6 +33,8 @@ interface SidebarProps {
   readonly entry: string | null;
   readonly active: DocRef | null;
   readonly onSetEntry: (id: string | null) => void;
+  readonly folders: readonly string[];
+  readonly onNewFolder: (path: string) => void;
   readonly onRenameFolder: (from: string, to: string) => void;
   readonly onDeleteFolder: (path: string) => void;
   readonly onOpen: (ref: DocRef) => void;
@@ -246,6 +248,8 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
     onDuplicate,
     onDelete,
     onSetEntry,
+    folders,
+    onNewFolder,
     onRenameFolder,
     onDeleteFolder,
     onResetWorkspace,
@@ -256,6 +260,8 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [editing, setEditing] = useState<{ id: string; mode: FileMode } | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  /** A folder being named: where it goes ("" for the top level). */
+  const [namingFolder, setNamingFolder] = useState<string | null>(null);
   const [folderEdit, setFolderEdit] = useState<{ path: string; mode: FileMode } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     target: ContextTarget;
@@ -273,7 +279,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
   const examples = EXAMPLES.filter((example) => match(example.fileName) || match(example.title));
   const myFiles = files.filter((file) => match(file.path));
   const searching = query.trim() !== "";
-  const tree = buildTree(myFiles);
+  const tree = buildTree(myFiles, searching ? [] : folders);
   const toggleFolder = (path: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -283,11 +289,43 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
 
   const copyExample = (example: Example) => onNewFile(example.fileName, example.source);
 
+  const startFolder = (parent: string) => {
+    if (parent) setCollapsed((current) => new Set([...current].filter((p) => p !== parent)));
+    setNamingFolder(parent);
+  };
+
+  /** The row where a new folder is named, inside `parent` ("" for the top level). */
+  const folderNameRow = (parent: string, depth: number) => (
+    <form
+      key="new-folder"
+      className="px-1 py-0.5"
+      style={{ paddingLeft: depth * 12 + 4 }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
+        if (input.value.trim())
+          onNewFolder(parent ? `${parent}/${input.value.trim()}` : input.value);
+        setNamingFolder(null);
+      }}
+    >
+      <input
+        name="name"
+        aria-label="New folder name"
+        placeholder="Folder name"
+        autoFocus
+        onBlur={() => setNamingFolder(null)}
+        onKeyDown={(event) => event.key === "Escape" && setNamingFolder(null)}
+        className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
+      />
+    </form>
+  );
+
   const newFileItems: (MenuItem | "separator")[] = [
     ...LANGUAGES.map((language) => ({
       label: `Empty ${language.label} file`,
       onSelect: () => onNewFile(`untitled.${language.extensions[0]}`),
     })),
+    { label: "New folder", onSelect: () => startFolder("") },
     "separator",
     ...EXAMPLES.map((example) => ({
       label: `From ${example.title}`,
@@ -313,6 +351,11 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
           label: "New file here",
           icon: <Plus size={14} />,
           onSelect: () => onNewFile(`${path}/untitled.js`),
+        },
+        {
+          label: "New folder here",
+          icon: <Folder size={14} />,
+          onSelect: () => startFolder(path),
         },
         {
           label: "Rename folder",
@@ -421,6 +464,7 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
               <span className="truncate">{node.name}</span>
             </button>
           )}
+          {open && namingFolder === node.path && folderNameRow(node.path, depth + 1)}
           {open && renderRows(node.children, depth + 1)}
         </div>
       );
@@ -516,8 +560,9 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
 
         <h2 className="mt-6 px-2 pb-1.5 text-[13px] font-semibold text-ink">My Files</h2>
         <div className="flex flex-col gap-0.5">
+          {namingFolder === "" && folderNameRow("", 0)}
           {renderRows(tree, 0)}
-          {myFiles.length === 0 && (
+          {tree.length === 0 && (
             <p className="px-3 py-1 text-[12px] text-faint">
               {query ? "No matches" : "No files yet"}
             </p>

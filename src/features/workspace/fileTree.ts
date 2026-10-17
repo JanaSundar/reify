@@ -25,18 +25,29 @@ const freeze = (folder: MutableFolder): TreeNode[] => [
 ];
 
 /** Nests files by folder (folders first, then files, each by name). Folders are path prefixes. */
-export const buildTree = (files: readonly WorkspaceFile[]): readonly TreeNode[] => {
+export const buildTree = (
+  files: readonly WorkspaceFile[],
+  /** Folders to show even when empty. */
+  emptyFolders: readonly string[] = [],
+): readonly TreeNode[] => {
   const root: MutableFolder = { name: "", path: "", folders: new Map(), files: [] };
-  for (const file of files) {
+  const folderAt = (parts: readonly string[]): MutableFolder => {
     let folder = root;
-    for (const part of file.path.split("/").slice(0, -1)) {
+    for (const part of parts) {
       const path = folder.path ? `${folder.path}/${part}` : part;
       if (!folder.folders.has(part))
         folder.folders.set(part, { name: part, path, folders: new Map(), files: [] });
       folder = folder.folders.get(part)!;
     }
-    folder.files.push({ kind: "file", name: basename(file.path), file });
-  }
+    return folder;
+  };
+  for (const path of emptyFolders) folderAt(path.split("/"));
+  for (const file of files)
+    folderAt(file.path.split("/").slice(0, -1)).files.push({
+      kind: "file",
+      name: basename(file.path),
+      file,
+    });
   return freeze(root);
 };
 

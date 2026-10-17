@@ -72,3 +72,12 @@ describe("file tree", () => {
     expect(tabLabel("y.js", open)).toBe("y.js");
   });
 });
+
+describe("file tree: empty folders", () => {
+  it("shows created folders even with no files, nested", () => {
+    const tree = buildTree([], ["a/b", "c"]);
+    expect(tree.map((n) => n.name)).toEqual(["a", "c"]);
+    const a = tree[0]!;
+    expect(a.kind === "folder" && a.children.map((n) => n.name)).toEqual(["b"]);
+  });
+});
