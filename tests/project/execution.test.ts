@@ -126,13 +126,13 @@ describe("running a project as native modules", () => {
     expect(loc.line).toBe(2);
   });
 
-  it("reports a missing named export from the engine's link step", async () => {
-    const run = await runProject({
-      "main.js": 'import { nope } from "./a.js";\nconsole.log(nope);',
-      "a.js": "export const a = 1;",
-    });
-    expect(run.outcome).toMatchObject({ kind: "exception" });
-    expect(run.outcome.kind === "exception" && run.outcome.message).toContain("nope");
+  it("refuses to build a project that imports a name its module lacks", async () => {
+    await expect(
+      runProject({
+        "main.js": 'import { nope } from "./a.js";\nconsole.log(nope);',
+        "a.js": "export const a = 1;",
+      }),
+    ).rejects.toThrow("missing-export");
   });
 
   it("leaves no tracer behind for later code", async () => {

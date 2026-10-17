@@ -47,10 +47,17 @@ export interface ImportRef {
   readonly range: SourceRange | null;
   /** Requested export names: `default`, `*` for a namespace, empty for a side-effect import. */
   readonly names: readonly string[];
+  /** `export * from "x"`: every export of the target is re-exported (not an import of names). */
+  readonly reexportAll?: boolean;
 }
 
 export interface ModuleScan {
   readonly imports: readonly ImportRef[];
+  /**
+   * The names the module exports itself (`default` included), not counting `export *`.
+   * Absent when the language cannot tell, which turns off the missing-export check.
+   */
+  readonly exports?: readonly string[];
   /** Syntax errors and unsupported constructs found while scanning. */
   readonly diagnostics: readonly Diagnostic[];
 }
@@ -88,6 +95,8 @@ export interface ModuleNode {
   readonly path: string;
   readonly file: ProjectFile;
   readonly language: ProjectLanguage;
+  /** What the module exports itself; see {@link ModuleScan.exports}. */
+  readonly exports?: readonly string[];
   /** Resolved static imports, in source order (which is evaluation order). */
   readonly imports: readonly ResolvedImport[];
 }

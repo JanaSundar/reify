@@ -53,3 +53,34 @@ runtime worker places it on `globalThis.__reify_tracer` before importing the ent
 module's first statement copies it into a module-local `__lc$t` (and `console`), and the
 runtime removes the global once the import has finished, since every module has evaluated by
 then (dynamic `import()` is rejected at compile time).
+
+## In the playground
+
+- **Files are paths.** A workspace file's `path` is normalized and relative ("demo/stats/math.js");
+  folders exist only as path prefixes. To make a folder, name a file inside it: type
+  `lib/math.js` when creating or renaming a file, or use a folder's "New file here". A folder
+  disappears with its last file. Saved workspaces are `reify:workspace:v2`; a v1 save (free-form
+  names) is migrated on load (invalid names become `untitled.js`, collisions are numbered) and
+  left untouched in storage.
+- **What Run runs.** The pinned _entry point_ (file menu → "Set as entry point", or the toolbar
+  selector), otherwise the open file. A JavaScript or TypeScript entry is sent as a project; the
+  compiler worker runs an entry that imports nothing as the lone script it always was (same
+  semantics, same trace). Python files, examples and test runs are always single files.
+- **Static checks before running.** The graph reports missing files (`missing-module`), names a
+  module does not export (`missing-export`, following `export *` but never for `default`), bare or
+  escaping specifiers, dynamic `import()`, syntax errors and files in other languages, each with
+  its file and range. Run never executes a project that has any of them. Renaming, moving or
+  deleting a file does not rewrite imports; the next Run reports the ones it broke.
+- **Tracing across files.** Locations carry their file; the editor opens the file a step runs in
+  once you start stepping, the call stack shows where each frame was called from (click to open),
+  facts and the log say `utils/math.js line 3` in multi-file runs, and breakpoints belong to the
+  file they were set in.
+
+## Known limits
+
+- Modules are strict ES modules; a lone script keeps its sloppy-mode script semantics.
+- JavaScript and TypeScript only. Python imports between project files are not wired up.
+- Cross-file type checking in the editor is not done: each file is checked alone.
+- Service workers need a secure context (https or localhost); without one a project run fails
+  with a message saying so. Only Chromium has been exercised in a real browser.
+- Module-level variables show in the global frame; there is no separate module inspector.

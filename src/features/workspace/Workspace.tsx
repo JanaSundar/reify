@@ -10,7 +10,7 @@ import {
   Maximize2,
   Minimize2,
   PanelLeft,
-  PanelRight,
+  ScanSearch,
   Play,
   Plus,
   RotateCcw,
@@ -1197,7 +1197,7 @@ export default function Workspace() {
                   inspectorOpen ? "text-accent" : "text-muted hover:text-ink"
                 }`}
               >
-                <PanelRight size={16} />
+                <ScanSearch size={16} />
               </button>
             )}
 

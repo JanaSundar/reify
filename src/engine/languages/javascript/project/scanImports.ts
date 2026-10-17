@@ -1,7 +1,7 @@
 import type { ImportRef, ModuleScan, ProjectFile } from "../../../core/project/types";
 import { type SourceRange } from "../../../core/protocol/program";
 import { languageOfFile } from "../../catalog";
-import { babelTransformFromAst, type BabelTypes, type PluginObject } from "../compiler/babel";
+import { babelTransformFromAst, t, type BabelTypes, type PluginObject } from "../compiler/babel";
 import { BABEL_OPTIONS, internalDiagnostic, parseSource } from "../compiler/parse";
 
 type Node = BabelTypes.Node;
@@ -38,9 +38,18 @@ const reexportedNames = (node: BabelTypes.ExportNamedDeclaration): string[] =>
     return exportName(specifier.local);
   });
 
-/** Collects every import in source order. Type-only imports are already stripped. */
-const collector = (found: ImportRef[]): PluginObject => ({
+/** Names an `export` without a source gives the module. */
+const declaredExports = (node: BabelTypes.ExportNamedDeclaration): string[] =>
+  node.declaration
+    ? Object.keys(t.getBindingIdentifiers(node.declaration))
+    : node.specifiers.map((specifier) => exportName(specifier.exported));
+
+/** Collects every import (and the module's own exports) in source order. Types are stripped. */
+const collector = (found: ImportRef[], exported: string[]): PluginObject => ({
   visitor: {
+    ExportDefaultDeclaration() {
+      exported.push("default");
+    },
     ImportDeclaration({ node }) {
       found.push({
         specifier: node.source.value,
@@ -50,6 +59,7 @@ const collector = (found: ImportRef[]): PluginObject => ({
       });
     },
     ExportNamedDeclaration({ node }) {
+      exported.push(...declaredExports(node));
       if (!node.source) return;
       found.push({
         specifier: node.source.value,
@@ -64,6 +74,7 @@ const collector = (found: ImportRef[]): PluginObject => ({
         kind: "static",
         range: rangeOf(node.source),
         names: ["*"],
+        reexportAll: true,
       });
     },
     ImportExpression({ node }) {
@@ -88,17 +99,18 @@ export const scanImports = (file: ProjectFile): ModuleScan => {
   if (!parsed.ok) return { imports: [], diagnostics: [parsed.diagnostic] };
 
   const imports: ImportRef[] = [];
+  const exports: string[] = [];
   try {
     babelTransformFromAst(parsed.ast, file.source, {
       ...BABEL_OPTIONS,
       sourceType: "module",
       filename: file.path,
-      plugins: [() => collector(imports)],
+      plugins: [() => collector(imports, exports)],
       code: false,
       ast: false,
     });
   } catch (error) {
     return { imports: [], diagnostics: [internalDiagnostic(error)] };
   }
-  return { imports, diagnostics: [] };
+  return { imports, exports, diagnostics: [] };
 };

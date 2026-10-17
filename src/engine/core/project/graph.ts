@@ -44,6 +44,45 @@ const indexFiles = (
   return files;
 };
 
+/** Whether a module provides `name`, directly or through `export *`. Unknown counts as yes. */
+const provides = (
+  modules: ReadonlyMap<string, ModuleNode>,
+  path: string,
+  name: string,
+  seen = new Set<string>(),
+): boolean => {
+  const node = modules.get(path);
+  if (!node?.exports) return true;
+  // A module already being searched (a cycle of `export *`) adds nothing new.
+  if (seen.has(path)) return false;
+  if (node.exports.includes(name)) return true;
+  seen.add(path);
+  // `export *` never re-exports a module's default.
+  return (
+    name !== "default" &&
+    node.imports.some(({ ref, target }) => ref.reexportAll && provides(modules, target, name, seen))
+  );
+};
+
+/** Named imports (and re-exports) of names the target module does not export. */
+const missingExports = (modules: ReadonlyMap<string, ModuleNode>): ProjectDiagnostic[] =>
+  [...modules.values()].flatMap((node) =>
+    node.imports.flatMap(({ ref, target }) =>
+      ref.reexportAll
+        ? []
+        : ref.names
+            .filter((name) => name !== "*" && !provides(modules, target, name))
+            .map((name) =>
+              error(
+                node.path,
+                "missing-export",
+                `${target} has no export named “${name}”.`,
+                ref.range,
+              ),
+            ),
+    ),
+  );
+
 /**
  * Discovers the modules reachable from the project's entry by scanning and resolving
  * imports. Pure: scanning and resolution belong to the languages, so nothing is executed
@@ -123,8 +162,9 @@ export const buildGraph = (project: Project, host: GraphHost): ProjectGraph => {
         }
       }
     }
-    modules.set(path, { path, file: files.get(path)!, language, imports });
+    modules.set(path, { path, file: files.get(path)!, language, exports: scan.exports, imports });
   }
+  diagnostics.push(...missingExports(modules));
   return { entry: entry.path, modules, diagnostics };
 };
 
