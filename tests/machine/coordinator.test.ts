@@ -36,13 +36,15 @@ const setup = () => {
   return { workers, scheduler, store, coordinator, callbacks };
 };
 
-const compiled = (compiler: FakeWorker, runId: number) =>
+const compiled = (compiler: FakeWorker, runId: number) => {
+  compiler.emit({ type: "ready", runId });
   compiler.emit({
     type: "compiled",
     runId,
     compileMs: 1,
     result: { ok: true, code: "", program: PROGRAM },
   });
+};
 
 const line: TraceEvent = { k: 0, l: 0 };
 const batch = (...events: TraceEvent[]) => encodeEvents(events);
@@ -53,7 +55,7 @@ describe("ExecutionCoordinator", () => {
     coordinator.start({ runId: 1, languageId: "javascript", source: "x" }, callbacks);
     compiled(workers.compilers[0]!, 1);
     const runtime = workers.executing[0]!;
-    expect(runtime.posted[0]).toMatchObject({ type: "execute", runId: 1 });
+    expect(runtime.requests[0]).toMatchObject({ type: "execute", runId: 1 });
     runtime.emit({ type: "events", runId: 1, batch: batch(line, line) });
     runtime.emit({
       type: "done",
@@ -156,6 +158,7 @@ describe("ExecutionCoordinator", () => {
     const { workers, scheduler, store, coordinator, callbacks } = setup();
     coordinator.start({ runId: 1, languageId: "javascript", source: "x" }, callbacks);
     compiled(workers.compilers[0]!, 1);
+    workers.executing[0]!.emit({ type: "ready", runId: 1 });
     scheduler.advance(DEFAULT_LIMITS.timeoutMs + 1);
     expect(workers.executing[0]!.terminated).toBe(true);
     expect(callbacks.onComplete).toHaveBeenCalledWith(
@@ -168,11 +171,43 @@ describe("ExecutionCoordinator", () => {
   it("replaces a stuck compiler after the compile timeout", () => {
     const { workers, scheduler, coordinator, callbacks } = setup();
     coordinator.start({ runId: 1, languageId: "javascript", source: "x" }, callbacks);
+    workers.compilers[0]!.emit({ type: "ready", runId: 1 });
     scheduler.advance(DEFAULT_LIMITS.compileTimeoutMs + 1);
     expect(workers.compilers[0]!.terminated).toBe(true);
     expect(callbacks.onError).toHaveBeenCalledWith(expect.objectContaining({ kind: "internal" }));
     coordinator.start({ runId: 2, languageId: "javascript", source: "x" }, callbacks);
     expect(workers.compilers).toHaveLength(2);
+  });
+
+  it("gives a loading compiler the load budget, then the compile budget", () => {
+    const { workers, scheduler, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    const compiler = workers.compilers[0]!;
+    scheduler.advance(DEFAULT_LIMITS.compileTimeoutMs + 1);
+    expect(compiler.terminated).toBe(false);
+    compiler.emit({ type: "ready", runId: 1 });
+    scheduler.advance(DEFAULT_LIMITS.compileTimeoutMs + 1);
+    expect(compiler.terminated).toBe(true);
+    expect(callbacks.onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("Compilation took longer") }),
+    );
+  });
+
+  it("fails the run when the compiler does not load in time", () => {
+    const { workers, scheduler, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    scheduler.advance(DEFAULT_LIMITS.loadTimeoutMs + 1);
+    expect(workers.compilers[0]!.terminated).toBe(true);
+    expect(callbacks.onError).toHaveBeenCalledWith({
+      kind: "internal",
+      message: expect.stringContaining("compiler did not load"),
+    });
+  });
+
+  it("asks the compiler to load the prewarmed language", () => {
+    const { workers, coordinator } = setup();
+    coordinator.prewarm("python");
+    expect(workers.compilers[0]!.posted).toEqual([{ type: "warm", languageId: "python" }]);
   });
 
   it("reports worker crashes as failures", () => {
@@ -188,11 +223,78 @@ describe("ExecutionCoordinator", () => {
 
   it("uses the prewarmed runtime worker", () => {
     const { workers, coordinator, callbacks } = setup();
-    coordinator.prewarm();
-    const spare = workers.created.find((w) => w.kind === "runtime")!;
+    coordinator.prewarm("javascript");
+    const spare = workers.runtimes[0]!;
     coordinator.start({ runId: 1, languageId: "javascript", source: "x" }, callbacks);
     compiled(workers.compilers[0]!, 1);
-    expect(spare.posted).toHaveLength(1);
+    expect(spare.requests).toHaveLength(1);
+  });
+
+  it("warms the spare runtime for the requested language and replaces a mismatched one", () => {
+    const { workers, coordinator } = setup();
+    coordinator.prewarm("python");
+    const python = workers.runtimes[0]!;
+    expect(python.posted).toEqual([{ type: "warm", languageId: "python" }]);
+    coordinator.prewarm("python");
+    expect(workers.runtimes).toHaveLength(1);
+    coordinator.prewarm("javascript");
+    expect(python.terminated).toBe(true);
+    expect(workers.runtimes[1]!.posted).toEqual([{ type: "warm", languageId: "javascript" }]);
+  });
+
+  it("warms the next spare for the language that just ran", () => {
+    const { workers, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    compiled(workers.compilers[0]!, 1);
+    const next = workers.runtimes.at(-1)!;
+    expect(next).not.toBe(workers.executing[0]);
+    expect(next.posted).toEqual([{ type: "warm", languageId: "python" }]);
+  });
+
+  it("runs the load budget until the runtime is ready, then the execution budget", () => {
+    const { workers, scheduler, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    compiled(workers.compilers[0]!, 1);
+    const runtime = workers.executing[0]!;
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: "loading" }),
+    );
+    // A slow runtime download does not count against the execution budget.
+    scheduler.advance(DEFAULT_LIMITS.timeoutMs + 1);
+    expect(runtime.terminated).toBe(false);
+    runtime.emit({ type: "ready", runId: 1 });
+    expect(callbacks.onProgress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ phase: "executing" }),
+    );
+    scheduler.advance(DEFAULT_LIMITS.timeoutMs + 1);
+    expect(runtime.terminated).toBe(true);
+    expect(callbacks.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "limit", limit: "time" }),
+      expect.anything(),
+    );
+  });
+
+  it("fails the run when the runtime does not load in time", () => {
+    const { workers, scheduler, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    compiled(workers.compilers[0]!, 1);
+    scheduler.advance(DEFAULT_LIMITS.loadTimeoutMs + 1);
+    expect(workers.executing[0]!.terminated).toBe(true);
+    expect(callbacks.onError).toHaveBeenCalledWith({
+      kind: "internal",
+      message: expect.stringContaining("did not load"),
+    });
+  });
+
+  it("ignores a stale ready message", () => {
+    const { workers, scheduler, coordinator, callbacks } = setup();
+    coordinator.start({ runId: 1, languageId: "python", source: "x" }, callbacks);
+    compiled(workers.compilers[0]!, 1);
+    workers.executing[0]!.emit({ type: "ready", runId: 7 });
+    scheduler.advance(DEFAULT_LIMITS.loadTimeoutMs + 1);
+    expect(callbacks.onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("did not load") }),
+    );
   });
 });
 
@@ -324,7 +426,7 @@ describe("test runs", () => {
     });
     compiled(workers.compilers[0]!, 1);
     const runtime = workers.executing[0]!;
-    expect(runtime.posted[0]).toMatchObject({ type: "test", runId: 1, suite });
+    expect(runtime.requests[0]).toMatchObject({ type: "test", runId: 1, suite });
     runtime.emit({ type: "test-result", runId: 1, result });
     runtime.emit({ type: "test-result", runId: 99, result: { ...result, caseId: "stale" } });
     runtime.emit({

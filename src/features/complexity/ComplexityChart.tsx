@@ -8,21 +8,12 @@ import {
   type EmpiricalEstimate,
   type Sample,
 } from "@/engine/core/analysis/complexity";
+import { compact, niceMax } from "./chartScale";
 
 const WIDTH = 360;
 const HEIGHT = 200;
 const PAD = { left: 48, right: 12, top: 12, bottom: 32 };
 const CURVE_SAMPLES = 48;
-
-const niceMax = (value: number): number => {
-  if (value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  const step = [1, 2, 2.5, 5, 10].find((s) => s * magnitude >= value) ?? 10;
-  return step * magnitude;
-};
-
-const compact = (value: number): string =>
-  new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 
 /**
  * Operations against input size: one series (measured cases) plus the fitted curve as a

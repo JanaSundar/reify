@@ -35,7 +35,7 @@ export interface TestResult {
   readonly steps: number;
   /** Deepest call stack reached during the call. */
   readonly maxDepth: number;
-  /** Input size `n` derived from the arguments (see docs/complexity.md). */
+  /** Input size `n` derived from the arguments (see "Complexity" in docs/architecture.md). */
   readonly inputSize: number | null;
   readonly ms: number;
 }

@@ -1,3 +1,5 @@
+import { power } from "./cost";
+
 /**
  * Language-neutral complexity classes, their notation, and an empirical estimator that fits
  * measured operation counts against input sizes. All functions are pure.
@@ -33,24 +35,6 @@ export const dominant = (a: ComplexityClass, b: ComplexityClass): ComplexityClas
 
 export const sameClass = (a: ComplexityClass, b: ComplexityClass): boolean =>
   compareClass(a, b) === 0;
-
-const SUPERSCRIPT: Record<string, string> = {
-  "0": "⁰",
-  "1": "¹",
-  "2": "²",
-  "3": "³",
-  "4": "⁴",
-  "5": "⁵",
-  "6": "⁶",
-  "7": "⁷",
-  "8": "⁸",
-  "9": "⁹",
-};
-
-const power = (base: string, exponent: number): string =>
-  exponent === 1
-    ? base
-    : `${base}${[...String(exponent)].map((d) => SUPERSCRIPT[d] ?? d).join("")}`;
 
 /** Big-O notation, e.g. `O(1)`, `O(log n)`, `O(n² log n)`, `O(2ⁿ)`. */
 export const formatComplexity = (c: ComplexityClass): string => {
@@ -189,12 +173,3 @@ export const estimateComplexity = (samples: readonly Sample[]): EmpiricalEstimat
     points,
   };
 };
-
-// ---------------------------------------------------------------- static estimate
-
-/** A compile-time estimate with human-readable reasons. */
-export interface StaticComplexity {
-  readonly time: ComplexityClass;
-  /** Short factual notes, e.g. "2 nested loops in `twoSum`". */
-  readonly notes: readonly string[];
-}

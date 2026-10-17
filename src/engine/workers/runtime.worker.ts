@@ -1,5 +1,9 @@
 /// <reference lib="webworker" />
-import { parseRuntimeRequest, type RuntimeWorkerMessage } from "../core/protocol/messages";
+import {
+  parseRuntimeRequest,
+  parseWarmRequest,
+  type RuntimeWorkerMessage,
+} from "../core/protocol/messages";
 import { lockdownGlobals } from "../core/runtime/lockdown";
 import { loadRuntime } from "../languages/registry";
 import { handleRuntimeRequest } from "./handlers";
@@ -12,11 +16,14 @@ const scope = self as unknown as DedicatedWorkerGlobalScope;
 const postMessage = scope.postMessage.bind(scope);
 const now = performance.now.bind(performance);
 
-// Warm up the default runtime while the worker sits in the pool.
-void loadRuntime("javascript");
-
 let used = false;
 scope.onmessage = (event: MessageEvent<unknown>) => {
+  // Load the runtime the coordinator expects while the worker waits as the spare.
+  const warm = parseWarmRequest(event.data);
+  if (warm) {
+    void loadRuntime(warm.languageId)?.catch(() => undefined);
+    return;
+  }
   const request = parseRuntimeRequest(event.data);
   if (!request || used) return;
   used = true;

@@ -32,6 +32,8 @@ const nextFrame = (callback: () => void): void => {
 export interface ExecutionSession {
   readonly store: TraceStore;
   readonly actor: ExecutionActor;
+  /** Starts workers for the next run in `languageId` (stable across renders). */
+  readonly prewarm: (languageId: string) => void;
 }
 
 /**
@@ -46,16 +48,14 @@ export function useExecutionSession(): ExecutionSession {
       actors: { execution: createExecutionActor(coordinator) },
       actions: { clearTrace: () => store.clear() },
     });
-    return { store, coordinator, machine };
+    const prewarm = (languageId: string) => coordinator.prewarm(languageId);
+    return { store, coordinator, machine, prewarm };
   });
   const actor = useActorRef(services.machine);
 
-  useEffect(() => {
-    services.coordinator.prewarm();
-    return () => services.coordinator.dispose();
-  }, [services]);
+  useEffect(() => () => services.coordinator.dispose(), [services]);
 
-  return { store: services.store, actor };
+  return { store: services.store, actor, prewarm: services.prewarm };
 }
 
 export function useTraceSnapshot(store: TraceStore): TraceSnapshot {

@@ -1,4 +1,11 @@
 import type { TestSuite } from "@/engine/core/protocol/testing";
+import {
+  languageById,
+  languageOfFile,
+  withLanguageExtension,
+  type Language,
+  type LanguageId,
+} from "@/engine/languages/catalog";
 import { EXAMPLES, findExample } from "@/content/examples";
 import { STARTER_SOURCE, STARTER_SUITE } from "./draft";
 
@@ -34,7 +41,7 @@ export interface OpenDoc {
   readonly name: string;
   readonly source: string;
   readonly suite: TestSuite;
-  readonly languageId: "javascript" | "typescript";
+  readonly languageId: LanguageId;
   readonly editable: boolean;
 }
 
@@ -52,7 +59,7 @@ export type WorkspaceAction =
   | { readonly type: "rename"; readonly id: string; readonly name: string }
   | { readonly type: "duplicate"; readonly id: string; readonly newId: string }
   | { readonly type: "delete"; readonly id: string }
-  | { readonly type: "language"; readonly languageId: "javascript" | "typescript" }
+  | { readonly type: "language"; readonly languageId: LanguageId }
   | { readonly type: "toggleBreakpoint"; readonly line: number }
   | { readonly type: "clearBreakpoints" }
   | { readonly type: "reset" };
@@ -62,23 +69,25 @@ export const MAX_FILES = 50;
 export const MAX_FILE_CHARS = 200_000;
 
 /** What a new empty file starts with: where files live, so nobody expects a server copy. */
-export const NEW_FILE_SOURCE = [
-  "// Your files are stored only in this browser, never uploaded.",
-  "// Clearing site data deletes them, so copy anything you want to keep.",
-  "",
-  "",
-].join("\n");
+export const newFileSource = (language: Language): string =>
+  [
+    `${language.lineComment} Your files are stored only in this browser, never uploaded.`,
+    `${language.lineComment} Clearing site data deletes them, so copy anything you want to keep.`,
+    "",
+    "",
+  ].join("\n");
+
+/**
+ * Whether a file may switch language: only while it holds no code of its own (empty, or the
+ * untouched starter comment). Switching renames the file; it never translates code.
+ */
+export const canSwitchLanguage = (file: { readonly name: string; readonly source: string }) =>
+  file.source.trim() === "" || file.source === newFileSource(languageOfFile(file.name));
 
 export const EMPTY_SUITE: TestSuite = { entry: "", target: "return", cases: [] };
 
 export const docKey = (ref: DocRef): string => `${ref.kind}:${ref.id}`;
 const sameDoc = (a: DocRef, b: DocRef): boolean => a.kind === b.kind && a.id === b.id;
-
-export const languageOf = (name: string): "javascript" | "typescript" =>
-  /\.tsx?$/i.test(name) ? "typescript" : "javascript";
-
-const withExtension = (name: string, languageId: "javascript" | "typescript"): string =>
-  `${name.replace(/\.(m?[jt]sx?)$/i, "")}.${languageId === "typescript" ? "ts" : "js"}`;
 
 /** Makes `name` unique among the files ("untitled.js" → "untitled-2.js"). */
 export const uniqueName = (files: readonly WorkspaceFile[], name: string): string => {
@@ -101,7 +110,7 @@ export const resolveDoc = (state: WorkspaceState, ref: DocRef): OpenDoc | null =
       name: file.name,
       source: file.source,
       suite: file.suite,
-      languageId: languageOf(file.name),
+      languageId: languageOfFile(file.name).id,
       editable: true,
     };
   }
@@ -113,7 +122,7 @@ export const resolveDoc = (state: WorkspaceState, ref: DocRef): OpenDoc | null =
     name: example.fileName,
     source: state.exampleEdits[ref.id] ?? example.source,
     suite: state.exampleSuites[ref.id] ?? EMPTY_SUITE,
-    languageId: languageOf(example.fileName),
+    languageId: languageOfFile(example.fileName).id,
     editable: true,
   };
 };
@@ -175,10 +184,11 @@ export const workspaceReducer = (
         : { ...state, exampleSuites: { ...state.exampleSuites, [active.id]: action.suite } };
     case "create": {
       if (state.files.length >= MAX_FILES) return state;
+      const name = uniqueName(state.files, action.name ?? "untitled.js");
       const file: WorkspaceFile = {
         id: action.id,
-        name: uniqueName(state.files, action.name ?? "untitled.js"),
-        source: action.source ?? NEW_FILE_SOURCE,
+        name,
+        source: action.source ?? newFileSource(languageOfFile(name)),
         suite: EMPTY_SUITE,
       };
       return open({ ...state, files: [...state.files, file] }, { kind: "file", id: file.id });
@@ -204,16 +214,23 @@ export const workspaceReducer = (
       // Closing may have fallen back to the deleted file itself; pick something that exists.
       return exists(next, next.active) ? next : close(next, next.active);
     }
-    case "language":
-      return active.kind === "file"
-        ? updateFile(state, active.id, (file) => ({
-            ...file,
-            name: uniqueName(
-              state.files.filter((f) => f.id !== file.id),
-              withExtension(file.name, action.languageId),
-            ),
-          }))
-        : state;
+    case "language": {
+      if (active.kind !== "file") return state;
+      const target = languageById(action.languageId);
+      return updateFile(state, active.id, (file) =>
+        canSwitchLanguage(file)
+          ? {
+              ...file,
+              name: uniqueName(
+                state.files.filter((f) => f.id !== file.id),
+                withLanguageExtension(file.name, target),
+              ),
+              // The starter comment is rewritten in the new language's syntax.
+              source: file.source.trim() === "" ? file.source : newFileSource(target),
+            }
+          : file,
+      );
+    }
     case "toggleBreakpoint": {
       const key = docKey(active);
       const lines = state.breakpoints[key] ?? [];
@@ -232,14 +249,13 @@ export const workspaceReducer = (
 // ---------------------------------------------------------------- persistence
 
 const STORAGE_KEY = "reify:workspace:v1";
-const LEGACY_DRAFT_KEY = "learncode:draft:v2";
 
-const STARTER_FILES = (legacySource?: string, legacySuite?: TestSuite): WorkspaceFile[] => [
+const STARTER_FILES = (): WorkspaceFile[] => [
   {
     id: "index",
     name: "index.js",
-    source: legacySource ?? STARTER_SOURCE,
-    suite: legacySuite ?? STARTER_SUITE,
+    source: STARTER_SOURCE,
+    suite: STARTER_SUITE,
   },
   {
     id: "utils",
@@ -289,12 +305,6 @@ export const loadWorkspace = (): WorkspaceState => {
       );
       const active = isRef(parsed.active) && exists(base, parsed.active) ? parsed.active : tabs[0];
       return active ? open({ ...base, tabs }, active) : base;
-    }
-    const legacy = localStorage.getItem(LEGACY_DRAFT_KEY);
-    if (legacy) {
-      const draft = JSON.parse(legacy) as { source?: unknown; suite?: TestSuite };
-      if (typeof draft.source === "string")
-        return initialWorkspace(STARTER_FILES(draft.source, draft.suite ?? STARTER_SUITE));
     }
   } catch {
     // Corrupt or unavailable storage: start fresh.

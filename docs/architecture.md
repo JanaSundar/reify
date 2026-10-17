@@ -1,6 +1,6 @@
 # Architecture
 
-LearnCode records what a user's program actually does and lets them replay it. The core
+Reify records what a user's program actually does and lets them replay it. The core
 promise: **visualizations are derived from real execution, never from algorithm templates.**
 
 ## Subsystems and data flow
@@ -27,7 +27,6 @@ promise: **visualizations are derived from real execution, never from algorithm 
 | XState machine (`src/machine`)         | lifecycle status, run id, progress counters, outcome/failure | trace events, snapshots |
 | `TraceStore` (`src/engine/core/trace`) | events, snapshots, playback position, console lines          | lifecycle status        |
 | React local state                      | open panels, playback speed, followed object                 | anything shared         |
-| Zustand                                | not used (no shared UI state needs it yet)                   | —                       |
 
 ## Modules
 
@@ -40,8 +39,8 @@ promise: **visualizations are derived from real execution, never from algorithm 
   facts), `TraceStore` (ingestion, snapshots, seeking, subscriptions).
 - `src/engine/core/coordinator`: `ExecutionCoordinator` (one active run, workers, timeouts,
   cancellation, stale-message rejection).
-- `src/engine/languages`: the seam for languages. `catalog.ts` (main thread) and `registry.ts`
-  (workers). A language provides a `LanguageCompiler` and a `LanguageRuntime`.
+- `src/engine/languages`: the seam for languages. `registry.ts` (workers) creates them lazily.
+  A language provides a `LanguageCompiler` and a `LanguageRuntime`.
 - `src/engine/languages/javascript`: the first adapter (JavaScript and TypeScript share it).
 - `src/engine/workers`: thin worker entry points around the testable `handlers.ts`.
 - `src/features/*`: UI. `src/app`: routes (static SEO pages plus the client-only playground).
@@ -71,7 +70,7 @@ Rules that keep instrumented code faithful to the original:
    maps them to original source ranges. TypeScript is stripped first while keeping original node
    locations, so highlights always point at the user's source.
 6. **Reject rather than mislead.** Unsupported constructs fail compilation with a diagnostic;
-   partially traced ones produce warnings (`src/content/supportedJavascript.ts`).
+   partially traced ones produce warnings (`src/engine/languages/javascript/compiler/checks.ts`).
 
 Correctness is checked by differential tests (`tests/engine/differential.test.ts`): instrumented
 and plain execution must print the same output and throw the same errors, for a corpus of DSA
@@ -116,7 +115,8 @@ kind: `ArrayView` (indexed cells, matrix for grids), `ObjectView` and `MapView` 
 
 1. Implement `LanguageCompiler` and `LanguageRuntime` under `src/engine/languages/<id>/`,
    emitting the neutral events from `core/protocol`.
-2. Register them in `registry.ts` and describe the language in `catalog.ts`.
+2. Register them in `registry.ts` and map the file extension to the language id in
+   `languageOf` (`src/features/workspace/files.ts`).
 3. Run the corpus through the shared differential harness for that language.
 
 ## Test cases

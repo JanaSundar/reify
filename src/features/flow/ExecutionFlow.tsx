@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useRef } from "react";
 import type { StepView } from "@/engine/core/trace/stepView";
@@ -148,9 +148,10 @@ export function ExecutionFlow({ view, languageBadge, focus, onFocus }: Execution
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={easeOut(0.2)}
-                className="flex flex-col items-center gap-1"
+                // No decorative arrows: the only pointer is the connector, drawn when the call
+                // works on a specific cell.
+                className="flex flex-col items-center"
               >
-                <ArrowDown size={16} className={`text-accent ${connector ? "invisible" : ""}`} />
                 <span
                   ref={pill}
                   title={target ? `Working on ${target.reason}` : undefined}
@@ -161,7 +162,6 @@ export function ExecutionFlow({ view, languageBadge, focus, onFocus }: Execution
                     {languageBadge}
                   </span>
                 </span>
-                <ArrowDown size={16} className="text-accent" />
               </motion.div>
             ) : null}
           </AnimatePresence>

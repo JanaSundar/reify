@@ -1,3 +1,4 @@
+import { formatCost } from "@/engine/core/analysis/cost";
 import { describe, expect, it } from "vitest";
 import {
   complexity,
@@ -13,7 +14,7 @@ import { CORPUS } from "../corpus/programs";
 const staticOf = (source: string): string => {
   const result = new JavaScriptCompiler("javascript", false).compile(source);
   return result.ok && result.program.complexity
-    ? formatComplexity(result.program.complexity.time)
+    ? formatCost(result.program.complexity.time)
     : "n/a";
 };
 
@@ -61,7 +62,22 @@ describe("static estimate", () => {
     [
       "a helper called inside a loop",
       "function sum(a) { let s = 0; for (const x of a) s += x; return s; }\nfor (let i = 0; i < 5; i++) sum([1, 2]);",
-      "O(n²)",
+      "O(n·m)",
+    ],
+    [
+      "loops over two inputs, one after the other",
+      "const a = [1, 2], b = [3];\nfor (const x of a) console.log(x);\nfor (let i = 0; i < b.length; i++) console.log(b[i]);",
+      "O(n + m)",
+    ],
+    [
+      "loops over two inputs, one inside the other",
+      "const a = [1, 2], b = [3];\nfor (const x of a) b.forEach((y) => console.log(x, y));",
+      "O(n·m)",
+    ],
+    [
+      "a copy measured as its source",
+      "const a = [3, 1];\nconst sorted = a.toSorted();\nfor (const x of sorted) console.log(x);",
+      "O(n log n)",
     ],
   ])("estimates %s", (_name, source, expected) => {
     expect(staticOf(source)).toBe(expected);
@@ -69,7 +85,7 @@ describe("static estimate", () => {
 
   it("explains its estimate", () => {
     const result = new JavaScriptCompiler("javascript", false).compile(CORPUS.fibonacci!);
-    expect(result.ok && result.program.complexity?.notes.join(" ")).toContain(
+    expect(result.ok && result.program.complexity?.steps[0]?.reason).toContain(
       "calls itself 2 times",
     );
   });

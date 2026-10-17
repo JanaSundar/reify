@@ -19,7 +19,7 @@ describe("suite helpers", () => {
   it("detects declared functions", () => {
     const source =
       "function a() {}\nconst b = (x) => x;\nlet c = function () {};\nconst d = async x => x;\nconst notFn = 3;";
-    expect(detectFunctionNames(source)).toEqual(["a", "b", "c", "d"]);
+    expect(detectFunctionNames(source, "javascript")).toEqual(["a", "b", "c", "d"]);
   });
 
   it("edits cases immutably", () => {
@@ -33,7 +33,9 @@ describe("suite helpers", () => {
   });
 
   it("builds a traceable program for one case", () => {
-    const run = trace(traceSourceFor(STARTER_SOURCE, STARTER_SUITE, STARTER_SUITE.cases[0]!));
+    const run = trace(
+      traceSourceFor(STARTER_SOURCE, STARTER_SUITE, STARTER_SUITE.cases[0]!, "javascript"),
+    );
     expect(run.output.at(-1)).toBe("[0, 1]");
   });
 

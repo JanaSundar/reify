@@ -45,6 +45,21 @@ export interface TestRequest {
   readonly limits: ExecutionLimits;
 }
 
+/**
+ * Sent to a worker ahead of a run so it loads the language's compiler (compiler worker) or
+ * runtime (a spare runtime worker) while it waits. Carries no run id: it is not part of a run.
+ */
+export interface WarmRequest {
+  readonly type: "warm";
+  readonly languageId: string;
+}
+
+/** The worker has loaded the run's language compiler or runtime and starts working. */
+export interface ReadyMessage {
+  readonly type: "ready";
+  readonly runId: number;
+}
+
 export interface TestResultMessage {
   readonly type: "test-result";
   readonly runId: number;
@@ -73,9 +88,10 @@ export interface WorkerFailureMessage {
   readonly message: string;
 }
 
-export type CompilerWorkerMessage = CompileResponse | WorkerFailureMessage;
+export type CompilerWorkerMessage = ReadyMessage | CompileResponse | WorkerFailureMessage;
 export type RuntimeRequest = ExecuteRequest | TestRequest;
 export type RuntimeWorkerMessage =
+  | ReadyMessage
   | EventsMessage
   | TestResultMessage
   | DoneMessage
@@ -120,6 +136,11 @@ const isTestSuite = (value: unknown): boolean =>
       typeof c.expected === "string",
   );
 
+export const parseWarmRequest = (data: unknown): WarmRequest | null =>
+  isObject(data) && data.type === "warm" && typeof data.languageId === "string"
+    ? (data as unknown as WarmRequest)
+    : null;
+
 /** Validates either kind of runtime-worker request. */
 export const parseRuntimeRequest = (data: unknown): RuntimeRequest | null => {
   const execute = parseExecuteRequest(data);
@@ -137,6 +158,7 @@ export const parseRuntimeRequest = (data: unknown): RuntimeRequest | null => {
 
 export const parseCompilerMessage = (data: unknown): CompilerWorkerMessage | null => {
   if (!isObject(data) || !hasRunId(data)) return null;
+  if (data.type === "ready") return data as unknown as ReadyMessage;
   if (data.type === "compiled" && isObject(data.result) && typeof data.result.ok === "boolean") {
     return data as unknown as CompileResponse;
   }
@@ -149,6 +171,8 @@ export const parseCompilerMessage = (data: unknown): CompilerWorkerMessage | nul
 export const parseRuntimeMessage = (data: unknown): RuntimeWorkerMessage | null => {
   if (!isObject(data) || !hasRunId(data)) return null;
   switch (data.type) {
+    case "ready":
+      return data as unknown as ReadyMessage;
     case "events":
       return isObject(data.batch) &&
         data.batch.buffer instanceof ArrayBuffer &&

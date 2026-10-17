@@ -31,6 +31,7 @@ import { Menu, type MenuItem } from "@/components/Menu";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { findExample } from "@/content/examples";
+import { LANGUAGES, languageById, type LanguageId } from "@/engine/languages/catalog";
 import type { Diagnostic } from "@/engine/core/protocol/program";
 import type { TestCase, TestSuite } from "@/engine/core/protocol/testing";
 import { BreakpointsPanel } from "@/features/breakpoints/BreakpointsPanel";
@@ -50,10 +51,12 @@ import {
   useExecutionStatus,
   useTraceSnapshot,
 } from "@/hooks/useExecutionSession";
+import { edgeFadeMask, useHorizontalScroll } from "@/hooks/useHorizontalScroll";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { oneOf, usePreference } from "@/hooks/usePreference";
 import type { ExecutionStatus } from "@/machine/executionMachine";
 import {
+  canSwitchLanguage,
   docKey,
   loadWorkspace,
   MAX_FILE_CHARS,
@@ -83,6 +86,13 @@ const STATUS_TEXT: Record<ExecutionStatus, string> = {
   completed: "Finished",
   failed: "Failed",
   cancelled: "Cancelled",
+};
+
+/** Badge colours in the language menu (each language's own brand colour). */
+const LANGUAGE_BADGE_CLASS: Record<LanguageId, string> = {
+  javascript: "bg-[#f7df1e] text-black",
+  typescript: "bg-[#3178c6] text-white",
+  python: "bg-[#3776ab] text-[#ffd43b]",
 };
 
 const SAVE_DELAY_MS = 400;
@@ -124,7 +134,7 @@ const isEditable = (target: EventTarget | null): boolean =>
   Boolean(target.closest("input, textarea, select, [contenteditable='true'], .cm-editor"));
 
 export default function Workspace() {
-  const { store, actor } = useExecutionSession();
+  const { store, actor, prewarm } = useExecutionSession();
   const trace = useTraceSnapshot(store);
   const status = useExecutionStatus(actor);
   const context = useExecutionContext(actor);
@@ -138,6 +148,7 @@ export default function Workspace() {
       : loaded;
   });
   const doc = resolveDoc(workspace, workspace.active)!;
+  const switchable = doc.ref.kind === "file" && canSwitchLanguage(doc);
   const breakpoints = workspace.breakpoints[doc.key] ?? [];
 
   const [viewMode, setViewMode] = usePreference<ViewMode>("view-mode", "visual", oneOf(VIEW_MODES));
@@ -151,7 +162,8 @@ export default function Workspace() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [focus, setFocus] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  /** Bumped by "Reset workspace" so the editor reloads even when the same document stays open. */
+  /** Bumped by "Reset workspace" and language switches so the editor reloads even when the
+   * same document stays open. */
   const [generation, setGeneration] = useState(0);
 
   const source = useRef(doc.source);
@@ -160,6 +172,8 @@ export default function Workspace() {
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingStep = useRef<number | null>(Number.isInteger(launch.step) ? launch.step : null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const tabStrip = useRef<HTMLDivElement>(null);
+  const tabEdges = useHorizontalScroll(tabStrip);
 
   const drawerPanel = usePanelRef();
   const inspectorPanel = usePanelRef();
@@ -174,7 +188,12 @@ export default function Workspace() {
   const view = trace.view;
   const languageId = doc.languageId;
   const suite = doc.suite;
-  const functionNames = useMemo(() => detectFunctionNames(doc.source), [doc.source]);
+  const functionNames = useMemo(
+    () => detectFunctionNames(doc.source, languageId),
+    [doc.source, languageId],
+  );
+  // Keep a runtime for the open document's language loading before the user presses Run.
+  useEffect(() => prewarm(languageId), [prewarm, languageId]);
 
   const [saveFailed, setSaveFailed] = useState(false);
   useEffect(() => setSaveFailed(!saveWorkspace(workspace)), [workspace]);
@@ -234,6 +253,16 @@ export default function Workspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.key, generation]);
 
+  // Bring the active tab into view in the tab strip (new tabs open at its right end).
+  useEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      tabStrip.current
+        ?.querySelector('[role="tab"][aria-selected="true"]')
+        ?.scrollIntoView({ inline: "nearest", block: "nearest", behavior: "smooth" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [doc.key, workspace.tabs.length]);
+
   const run = () => {
     flushEdit();
     setTracedSource(source.current);
@@ -266,7 +295,7 @@ export default function Workspace() {
     capture("test_case_trace_started", { language: languageId });
     actor.send({
       type: "RUN",
-      source: traceSourceFor(source.current, suite, testCase),
+      source: traceSourceFor(source.current, suite, testCase, languageId),
       languageId,
     });
   };
@@ -431,6 +460,7 @@ export default function Workspace() {
 
   const statusText = (() => {
     if (busy && context.phase === "compiling") return "Compiling";
+    if (busy && context.phase === "loading") return `Loading ${languageById(languageId).label}`;
     if (busy && testMode)
       return `Testing ${context.testResults.length} of ${context.request?.suite?.cases.length ?? 0}`;
     if (busy) return `${STATUS_TEXT[status]} · ${context.steps.toLocaleString("en-US")} steps`;
@@ -452,7 +482,7 @@ export default function Workspace() {
         <CodeEditor
           key={`${doc.key}:${generation}`}
           initialValue={doc.source}
-          typescript={languageId === "typescript"}
+          languageId={languageId}
           execution={execution}
           diagnostics={diagnostics}
           breakpoints={breakpoints}
@@ -564,7 +594,7 @@ export default function Workspace() {
         {view ? (
           <ExecutionFlow
             view={view}
-            languageBadge={languageId === "typescript" ? "TS" : "JS"}
+            languageBadge={languageById(languageId).badge}
             focus={focus}
             onFocus={setFocus}
           />
@@ -863,7 +893,7 @@ export default function Workspace() {
 
         <main className="flex min-w-0 flex-1 flex-col gap-3 p-3">
           {/* Toolbar */}
-          <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 lg:flex-nowrap">
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -877,8 +907,12 @@ export default function Workspace() {
             </button>
 
             <div
+              ref={tabStrip}
               role="tablist"
               aria-label="Open files"
+              style={{ maskImage: edgeFadeMask(tabEdges) }}
+              // The only toolbar item that shrinks (min-w-0): many or long tabs scroll here
+              // instead of pushing the view and run controls onto a new line.
               className="flex min-w-0 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
             >
               <AnimatePresence initial={false}>
@@ -903,9 +937,10 @@ export default function Workspace() {
                         role="tab"
                         aria-selected={active}
                         onClick={() => openDoc(ref)}
-                        className="flex items-center gap-2"
+                        title={tab.name}
+                        className="flex min-w-0 items-center gap-2"
                       >
-                        <span className="font-mono">{tab.name}</span>
+                        <span className="max-w-40 truncate font-mono">{tab.name}</span>
                         {active && (
                           <span className="size-1.5 rounded-full bg-ink" aria-label="active file" />
                         )}
@@ -990,56 +1025,30 @@ export default function Workspace() {
               align="end"
               trigger={
                 <button type="button" className={`${outlineButton} w-44 justify-between`}>
-                  {languageId === "typescript" ? "TypeScript" : "JavaScript"}
+                  {languageById(languageId).label}
                   <ChevronDown size={15} className="text-muted" />
                 </button>
               }
-              items={[
-                {
-                  label: "JavaScript",
-                  icon: (
-                    <span className="rounded bg-[#f7df1e] px-1 text-[10px] font-bold text-black">
-                      JS
-                    </span>
-                  ),
-                  hint: languageId === "javascript" ? "✓" : undefined,
-                  disabled: doc.ref.kind === "example" && languageId !== "javascript",
-                  onSelect: () => {
-                    dispatch({ type: "language", languageId: "javascript" });
-                    capture("language_changed", { language: "javascript" });
-                  },
+              items={LANGUAGES.map((language) => ({
+                label: language.label,
+                icon: (
+                  <span
+                    className={`rounded px-1 text-[10px] font-bold ${LANGUAGE_BADGE_CLASS[language.id]}`}
+                  >
+                    {language.badge}
+                  </span>
+                ),
+                hint: language.id === languageId ? "✓" : undefined,
+                // Examples keep their language, and a file with code keeps the language its
+                // code is written in: switching renames the file, it never translates code.
+                disabled: language.id !== languageId && !switchable,
+                onSelect: () => {
+                  dispatch({ type: "language", languageId: language.id });
+                  // The editor holds its own text: reload it with the rewritten starter.
+                  setGeneration((g) => g + 1);
+                  capture("language_changed", { language: language.id });
                 },
-                {
-                  label: "TypeScript",
-                  icon: (
-                    <span className="rounded bg-[#3178c6] px-1 text-[10px] font-bold text-white">
-                      TS
-                    </span>
-                  ),
-                  hint:
-                    languageId === "typescript"
-                      ? "✓"
-                      : doc.ref.kind === "example"
-                        ? "files only"
-                        : undefined,
-                  disabled: doc.ref.kind === "example",
-                  onSelect: () => {
-                    dispatch({ type: "language", languageId: "typescript" });
-                    capture("language_changed", { language: "typescript" });
-                  },
-                },
-                {
-                  label: "Python",
-                  icon: (
-                    <span className="rounded bg-surface-3 px-1 text-[10px] font-bold text-muted">
-                      PY
-                    </span>
-                  ),
-                  hint: "soon",
-                  disabled: true,
-                  onSelect: () => undefined,
-                },
-              ]}
+              }))}
             />
 
             <div className="flex h-10 items-stretch rounded-xl bg-ink text-bg">

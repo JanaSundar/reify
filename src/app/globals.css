@@ -32,6 +32,10 @@
   --exec-bar: var(--accent);
   --changed: light-dark(rgb(124 92 240 / 0.1), rgb(169 144 255 / 0.16));
   --danger: light-dark(#c4413b, #ff7d74);
+  /* Categorical chart series, in fixed order (validated for colour-vision deficiency). */
+  --series-1: light-dark(#2a78d6, #3987e5);
+  --series-2: light-dark(#eb6834, #d95926);
+  --series-3: light-dark(#1baf7a, #199e70);
   --warning: light-dark(#a35f00, #e2b245);
   --success: light-dark(#1f7f4c, #5ccf7d);
   --val-number: light-dark(#2357c4, #7cb6ff);
