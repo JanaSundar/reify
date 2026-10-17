@@ -32,6 +32,12 @@ describe("Python compiler: behaviour is preserved", () => {
 });
 
 describe("Python compiler: tables", () => {
+  it("lists the source file and stamps every location with it", () => {
+    const { program } = ok(compiler.compile("x = 1\nprint(x)\n"));
+    expect(program.files).toEqual([{ id: 0, path: "main.py" }]);
+    for (const loc of program.locs) expect(program.files[loc.file]).toBeDefined();
+  });
+
   it("records statements, conditions, loops, calls and returns at their source ranges", () => {
     const { program } = ok(
       compiler.compile(

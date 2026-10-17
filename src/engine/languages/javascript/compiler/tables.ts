@@ -2,10 +2,12 @@ import type {
   BindingInfo,
   BindingKind,
   Diagnostic,
+  FileId,
   LocInfo,
   LocRole,
   SourceRange,
 } from "../../../core/protocol/program";
+import { SINGLE_FILE_ID } from "../../../core/protocol/program";
 import { TRACER_PARAM } from "../traceApi";
 import { t, type BabelTypes, type NodePath } from "./babel";
 
@@ -109,6 +111,13 @@ export const collectReads = (roots: readonly Node[]): string[] => {
 /** Interns source locations; the instrumented code refers to them by index. */
 export class LocTable {
   private readonly entries: LocInfo[] = [];
+
+  /** `base` is the number of locations of the modules compiled before this one. */
+  constructor(
+    private readonly file: FileId = SINGLE_FILE_ID,
+    private readonly base = 0,
+  ) {}
+
   private readonly cache = new WeakMap<Node, Map<LocRole, number>>();
 
   get locs(): readonly LocInfo[] {
@@ -126,7 +135,7 @@ export class LocTable {
     const range = explicit?.range ?? headRange(node);
     if (!range) return null;
     const reads = collectReads(explicit?.reads ?? readRoots(node));
-    const id = this.entries.push({ ...range, role, reads }) - 1;
+    const id = this.base + this.entries.push({ ...range, file: this.file, role, reads }) - 1;
     const byRole = this.cache.get(node) ?? new Map<LocRole, number>();
     byRole.set(role, id);
     this.cache.set(node, byRole);
@@ -156,6 +165,9 @@ export class BindingTable {
   private readonly ids = new Map<Binding, number>();
   private readonly globals = new Map<string, number>();
 
+  /** `base` is the number of bindings of the modules compiled before this one. */
+  constructor(private readonly base = 0) {}
+
   get bindings(): readonly BindingInfo[] {
     return this.entries;
   }
@@ -164,11 +176,13 @@ export class BindingTable {
     const known = this.ids.get(binding);
     if (known !== undefined) return known;
     const id =
+      this.base +
       this.entries.push({
         name: binding.identifier.name,
         kind: bindingKindOf(binding),
         line: binding.identifier.loc?.start.line ?? 0,
-      }) - 1;
+      }) -
+      1;
     this.ids.set(binding, id);
     return id;
   }
@@ -179,7 +193,7 @@ export class BindingTable {
     if (binding) return this.idOf(binding);
     const known = this.globals.get(name);
     if (known !== undefined) return known;
-    const id = this.entries.push({ name, kind: "global", line: 0 }) - 1;
+    const id = this.base + this.entries.push({ name, kind: "global", line: 0 }) - 1;
     this.globals.set(name, id);
     return id;
   }

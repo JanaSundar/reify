@@ -1,4 +1,5 @@
 import type { WorkerFactories, WorkerLike } from "@/engine/core/coordinator/ExecutionCoordinator";
+import { startModuleServer } from "@/lib/moduleServer";
 
 /** Adapts a DOM `Worker` to the coordinator's minimal `WorkerLike` interface. */
 const adapt = (worker: Worker): WorkerLike => {
@@ -19,6 +20,7 @@ const adapt = (worker: Worker): WorkerLike => {
 };
 
 export const browserWorkers: WorkerFactories = {
+  moduleServer: startModuleServer,
   compiler: () =>
     adapt(
       new Worker(new URL("../../engine/workers/compiler.worker.ts", import.meta.url), {

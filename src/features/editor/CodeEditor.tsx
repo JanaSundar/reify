@@ -35,7 +35,18 @@ export interface EditorDiagnostic {
   readonly range: SourceRange | null;
 }
 
+/** A place to show: the caret goes there and the line scrolls into view. */
+export interface EditorReveal {
+  /** The document it is in; the editor shows it only while that document is open. */
+  readonly docKey: string;
+  readonly line: number;
+  readonly column: number;
+  /** Changes with every request, so asking for the same place again still moves the caret. */
+  readonly nonce: number;
+}
+
 interface CodeEditorProps {
+  readonly reveal: EditorReveal | null;
   readonly initialValue: string;
   readonly languageId: LanguageId;
   readonly execution: ExecutionMark | null;
@@ -87,6 +98,7 @@ const toCmDiagnostics = (doc: Text, diagnostics: readonly EditorDiagnostic[]): C
  * execution highlight and diagnostics through transactions (no re-creation of the view).
  */
 export function CodeEditor({
+  reveal,
   initialValue,
   languageId,
   execution,
@@ -227,6 +239,17 @@ export function CodeEditor({
   useEffect(() => {
     if (view.current) forceLinting(view.current);
   }, [diagnostics]);
+
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor || !reveal) return;
+    const at = positionOf(editor.state.doc, reveal.line, reveal.column);
+    editor.dispatch({
+      selection: { anchor: at },
+      effects: EditorView.scrollIntoView(at, { y: "center" }),
+    });
+    editor.focus();
+  }, [reveal]);
 
   useEffect(() => {
     view.current?.dispatch({ effects: setBreakpoints.of(breakpoints) });

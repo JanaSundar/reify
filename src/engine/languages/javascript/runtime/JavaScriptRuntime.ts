@@ -5,9 +5,10 @@ import {
   type TestResult,
   type TestSuite,
 } from "../../../core/protocol/testing";
+import { stripModuleRoot } from "../../../core/project/moduleServer";
 import { TraceRecorder } from "../../../core/runtime/TraceRecorder";
 import type { LanguageRuntime } from "../../types";
-import { CONSOLE_PARAM, TRACER_PARAM } from "../traceApi";
+import { CONSOLE_PARAM, TRACER_GLOBAL, TRACER_PARAM } from "../traceApi";
 import { deepEqual, measureInputSize } from "./jsCompare";
 import { JsTracer } from "./JsTracer";
 import { describeThrown, formatValue } from "./jsValues";
@@ -23,9 +24,29 @@ interface Harness {
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-/** Executes instrumented JavaScript (sloppy-mode script semantics) with a tracer. */
+/** Loads (and so evaluates) an ES module by url. */
+export type ModuleLoader = (url: string) => Promise<unknown>;
+
+const importModule: ModuleLoader = (url) =>
+  import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ url);
+
+/** Reports an error that escaped the program: a resource limit, or an uncaught exception. */
+const failureOutcome = (tracer: JsTracer, error: unknown): RunOutcome => {
+  const limit = tracer.limitFor(error);
+  if (limit) return { kind: "limit", limit: limit.limit, message: limit.message };
+  const message = tracer.uncaught(error);
+  return { kind: "exception", message, loc: tracer.currentLoc >= 0 ? tracer.currentLoc : null };
+};
+
+/**
+ * Executes instrumented JavaScript with a tracer: a single file with sloppy-mode script
+ * semantics, or a project as native (strict) ES modules.
+ */
 export class JavaScriptRuntime implements LanguageRuntime {
-  constructor(readonly languageId: string) {}
+  constructor(
+    readonly languageId: string,
+    private readonly loadModule: ModuleLoader = importModule,
+  ) {}
 
   execute(code: string, recorder: TraceRecorder, limits: ExecutionLimits): RunOutcome {
     const tracer = new JsTracer(recorder, limits);
@@ -39,10 +60,31 @@ export class JavaScriptRuntime implements LanguageRuntime {
       program(tracer, tracer.console);
       return { kind: "ok" };
     } catch (error) {
-      const limit = tracer.limitFor(error);
-      if (limit) return { kind: "limit", limit: limit.limit, message: limit.message };
-      const message = tracer.uncaught(error);
-      return { kind: "exception", message, loc: tracer.currentLoc >= 0 ? tracer.currentLoc : null };
+      return failureOutcome(tracer, error);
+    }
+  }
+
+  /**
+   * Runs a project's entry module. Each module copies the tracer from a global when it
+   * evaluates; all of them have by the time the import settles, so the global is removed.
+   */
+  async executeModule(
+    entryUrl: string,
+    recorder: TraceRecorder,
+    limits: ExecutionLimits,
+  ): Promise<RunOutcome> {
+    const tracer = new JsTracer(recorder, limits);
+    const scope = globalThis as Record<string, unknown>;
+    scope[TRACER_GLOBAL] = tracer;
+    try {
+      await this.loadModule(entryUrl);
+      return { kind: "ok" };
+    } catch (error) {
+      // The engine names modules by url ("/__reify/…/a.js"); users know them by path.
+      if (error instanceof Error) error.message = stripModuleRoot(error.message);
+      return failureOutcome(tracer, error);
+    } finally {
+      delete scope[TRACER_GLOBAL];
     }
   }
 

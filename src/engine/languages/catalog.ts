@@ -10,6 +10,7 @@ export const LANGUAGES = [
     badge: "JS",
     extensions: ["js", "mjs", "jsx"],
     lineComment: "//",
+    projects: true,
   },
   {
     id: "typescript",
@@ -17,12 +18,23 @@ export const LANGUAGES = [
     badge: "TS",
     extensions: ["ts", "tsx"],
     lineComment: "//",
+    projects: true,
   },
-  { id: "python", label: "Python", badge: "PY", extensions: ["py"], lineComment: "#" },
+  {
+    id: "python",
+    label: "Python",
+    badge: "PY",
+    extensions: ["py"],
+    lineComment: "#",
+    projects: false,
+  },
 ] as const;
 
 export type Language = (typeof LANGUAGES)[number];
 export type LanguageId = Language["id"];
+
+/** The extensions a project file may have, for messages ("use .js, .ts or .py"). */
+export const KNOWN_EXTENSIONS: readonly string[] = LANGUAGES.flatMap((l) => l.extensions);
 
 export const DEFAULT_LANGUAGE: Language = LANGUAGES[0];
 
@@ -37,9 +49,13 @@ export const languageById = (id: LanguageId): Language => BY_ID.get(id)!;
 const extensionOf = (name: string): string | undefined =>
   /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase();
 
+/** The language of a file name, by extension; `undefined` for unknown extensions. */
+export const knownLanguageOfFile = (name: string): Language | undefined =>
+  BY_EXTENSION.get(extensionOf(name) ?? "");
+
 /** The language of a file name, by extension; unknown extensions are JavaScript. */
 export const languageOfFile = (name: string): Language =>
-  BY_EXTENSION.get(extensionOf(name) ?? "") ?? DEFAULT_LANGUAGE;
+  knownLanguageOfFile(name) ?? DEFAULT_LANGUAGE;
 
 /** `name` with its language extension replaced by `language`'s primary one. */
 export const withLanguageExtension = (name: string, language: Language): string => {

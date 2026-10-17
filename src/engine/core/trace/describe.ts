@@ -8,6 +8,15 @@ import {
 
 type Heap = ReadonlyMap<HeapId, HeapObject>;
 
+/** Where a location is, for sentences: `line 3`, or `utils/math.js line 3` in a multi-file run. */
+export const placeOf = (
+  program: { readonly files: readonly { readonly path: string }[] },
+  loc: { readonly file: number; readonly line: number },
+): string =>
+  program.files.length > 1
+    ? `${program.files[loc.file]?.path} line ${loc.line}`
+    : `line ${loc.line}`;
+
 const MAX_PREVIEW_ITEMS = 6;
 
 const more = (object: HeapObject): string =>

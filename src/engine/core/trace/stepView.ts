@@ -6,7 +6,7 @@ import {
   type HeapId,
   type HeapObject,
 } from "../protocol/values";
-import { previewValue } from "./describe";
+import { placeOf, previewValue } from "./describe";
 import { applyEvent, frameHolding, readBinding, type RuntimeState } from "./state";
 
 export interface VariableView {
@@ -205,7 +205,7 @@ const describeEvent = (
       if (!loc) return null;
       const reads =
         loc.reads.length > 0 ? ` — reads ${loc.reads.map((r) => `\`${r}\``).join(", ")}` : "";
-      return { kind: "line", text: `Executes line ${loc.line}${reads}` };
+      return { kind: "line", text: `Executes ${placeOf(program, loc)}${reads}` };
     }
     case EventKind.Call: {
       const args = event.params
@@ -241,7 +241,7 @@ const describeEvent = (
         : null;
     case EventKind.Branch: {
       const loc = locOf(program, event.l);
-      const where = loc ? ` on line ${loc.line}` : "";
+      const where = loc ? ` on ${placeOf(program, loc)}` : "";
       return { kind: "branch", text: `Condition${where} is ${event.taken ? "true" : "false"}` };
     }
     case EventKind.Console:

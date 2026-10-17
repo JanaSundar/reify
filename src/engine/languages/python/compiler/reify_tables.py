@@ -4,7 +4,7 @@ location and binding tables (`ProgramInfo.locs` / `ProgramInfo.bindings`) the tr
 
 import ast
 
-from reify_protocol import RESERVED_PREFIX
+from reify_protocol import RESERVED_PREFIX, SINGLE_FILE_ID
 
 
 def _table_type(table):
@@ -131,7 +131,7 @@ class Tables:
         self._binding_ids = {}
 
     def loc(self, role, span, reads=()):
-        self.locs.append({**span, "role": role, "reads": list(reads)})
+        self.locs.append({**span, "file": SINGLE_FILE_ID, "role": role, "reads": list(reads)})
         return len(self.locs) - 1
 
     def binding(self, scope, name, kind, line):

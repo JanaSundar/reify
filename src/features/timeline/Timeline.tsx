@@ -26,8 +26,8 @@ interface TimelineProps {
   readonly store: TraceStore;
   readonly position: number;
   readonly total: number;
-  /** Lines where playback pauses. */
-  readonly breakpoints: readonly number[];
+  /** Whether playback pauses at a place (file and line) it reaches. */
+  readonly isBreakpoint: (place: { file: number; line: number }) => boolean;
   readonly onShowShortcuts: () => void;
 }
 
@@ -60,7 +60,7 @@ function IconButton({
 }
 
 /** Playback over recorded history. Never re-runs the program. */
-export function Timeline({ store, position, total, breakpoints, onShowShortcuts }: TimelineProps) {
+export function Timeline({ store, position, total, isBreakpoint, onShowShortcuts }: TimelineProps) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = usePreference<number>("speed", 1, isSpeed);
   const [hover, setHover] = useState<{ step: number; x: number } | null>(null);
@@ -73,15 +73,14 @@ export function Timeline({ store, position, total, breakpoints, onShowShortcuts 
 
   useEffect(() => {
     if (!isPlaying) return;
-    const stops = new Set(breakpoints);
     const timer = setInterval(() => {
       store.stepBy(1);
       const now = store.getSnapshot().position;
-      const line = store.lineAt(now);
-      if (line !== null && stops.has(line)) setPlaying(false);
+      const place = store.locAt(now);
+      if (place && isBreakpoint(place)) setPlaying(false);
     }, BASE_INTERVAL_MS / speed);
     return () => clearInterval(timer);
-  }, [isPlaying, speed, store, breakpoints]);
+  }, [isPlaying, speed, store, isBreakpoint]);
 
   const stepAtPointer = (clientX: number) => {
     const rect = track.current!.getBoundingClientRect();

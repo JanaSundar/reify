@@ -1,3 +1,4 @@
+import type { Project } from "../project/types";
 import { decodeEvents } from "../protocol/eventCodec";
 import type { TraceEvent } from "../protocol/events";
 import {
@@ -37,6 +38,11 @@ export interface WorkerFactories {
   compiler(): WorkerLike;
   /** Single-use worker that executes one program. */
   runtime(): WorkerLike;
+  /**
+   * Makes sure compiled project modules can be fetched by the runtime worker (registers the
+   * service worker that serves them). Rejects if that is impossible. Absent: nothing to do.
+   */
+  moduleServer?(): Promise<void>;
 }
 
 export interface Scheduler {
@@ -54,7 +60,10 @@ const browserScheduler: Scheduler = {
 export interface RunRequest {
   readonly runId: number;
   readonly languageId: string;
+  /** The program's source; for a project, the entry file's. */
   readonly source: string;
+  /** When present, every file of a multi-file run; `source` is then the entry's. */
+  readonly project?: Project;
   /** When present, the run executes these test cases instead of recording a trace. */
   readonly suite?: TestSuite;
 }
@@ -185,8 +194,10 @@ export class ExecutionCoordinator {
       runId: request.runId,
       languageId: request.languageId,
       source: request.source,
+      ...(request.project && { project: request.project }),
     };
-    this.ensureCompiler().postMessage(message);
+    if (request.project) this.compileWhenServed(run, message);
+    else this.ensureCompiler().postMessage(message);
     return {
       cancel: () => this.cancel(run),
       dispose: () => {
@@ -201,6 +212,22 @@ export class ExecutionCoordinator {
     this.dropCompiler();
     this.spareRuntime?.worker.terminate();
     this.spareRuntime = null;
+  }
+
+  /** A project's modules are fetched by the runtime worker, so the module server comes first. */
+  private compileWhenServed(run: ActiveRun, message: CompileRequest): void {
+    const ready = this.workers.moduleServer?.() ?? Promise.resolve();
+    ready.then(
+      () => {
+        if (this.active === run) this.ensureCompiler().postMessage(message);
+      },
+      (error: unknown) =>
+        this.fail(
+          run,
+          "Multi-file projects need a service worker, which could not be started: " +
+            (error instanceof Error ? error.message : String(error)),
+        ),
+    );
   }
 
   private spawnRuntime(languageId: string): SpareRuntime {
@@ -275,12 +302,12 @@ export class ExecutionCoordinator {
       this.store.begin(run.request.runId, result.program, run.request.source);
       run.traceStarted = true;
     }
-    this.execute(run, result.code);
+    this.execute(run, result.code, result.entryUrl);
   }
 
   // ---------------------------------------------------------------- execute phase
 
-  private execute(run: ActiveRun, code: string): void {
+  private execute(run: ActiveRun, code: string, entryUrl?: string): void {
     // Until the worker reports `ready`, the load budget applies instead of the run budget.
     run.phase = "loading";
     this.scheduler.clearTimeout(run.timer);
@@ -297,7 +324,7 @@ export class ExecutionCoordinator {
 
     const request: RuntimeRequest = suite
       ? { type: "test", runId, languageId, code, suite, limits: this.limits }
-      : { type: "execute", runId, languageId, code, limits: this.limits };
+      : { type: "execute", runId, languageId, code, entryUrl, limits: this.limits };
     worker.postMessage(request);
     run.callbacks.onProgress({ phase: "loading", steps: 0, events: 0 });
     // Warm the next runtime worker, for the same language, while this one executes.

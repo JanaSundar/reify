@@ -13,6 +13,7 @@ import type {
   RunPhase,
   RunRequest,
 } from "@/engine/core/coordinator/ExecutionCoordinator";
+import type { Project } from "@/engine/core/project/types";
 import type { StaticComplexity } from "@/engine/core/analysis/staticEstimate";
 import type { RunOutcome, RunStats } from "@/engine/core/protocol/limits";
 import type { TestResult, TestSuite } from "@/engine/core/protocol/testing";
@@ -40,7 +41,7 @@ export interface ExecutionContext {
 }
 
 export type ExecutionEvent =
-  | { type: "RUN"; source: string; languageId: string; suite?: TestSuite }
+  | { type: "RUN"; source: string; languageId: string; project?: Project; suite?: TestSuite }
   | { type: "CANCEL" }
   | { type: "RESET" }
   | { type: "EXECUTION_COMPILED"; runId: number; analysis: StaticComplexity | null }
@@ -54,11 +55,12 @@ type WorkerEvent = Extract<ExecutionEvent, { runId: number }>;
 type RunEvent = Extract<ExecutionEvent, { type: "RUN" }>;
 
 /** The run request a RUN event asks for (the run id is assigned by the machine). */
-const requestOf = ({ source, languageId, suite }: RunEvent): Omit<RunRequest, "runId"> => ({
+const requestOf = ({
   source,
   languageId,
+  project,
   suite,
-});
+}: RunEvent): Omit<RunRequest, "runId"> => ({ source, languageId, project, suite });
 
 /** The invoked actor: bridges one run of the coordinator into machine events. */
 export const createExecutionActor = (coordinator: ExecutionCoordinator) =>

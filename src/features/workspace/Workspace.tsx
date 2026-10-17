@@ -6,10 +6,11 @@ import {
   Copy,
   Download,
   EllipsisVertical,
+  Flag,
   Maximize2,
   Minimize2,
   PanelLeft,
-  PanelRight,
+  ScanSearch,
   Play,
   Plus,
   RotateCcw,
@@ -31,13 +32,19 @@ import { ContextMenu, Menu, type MenuItem } from "@/components/Menu";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { findExample } from "@/content/examples";
-import { LANGUAGES, languageById, type LanguageId } from "@/engine/languages/catalog";
+import {
+  LANGUAGES,
+  languageById,
+  languageOfFile,
+  type LanguageId,
+} from "@/engine/languages/catalog";
+import { basename, normalizePath, type PathResult } from "@/engine/core/project/paths";
 import type { Diagnostic } from "@/engine/core/protocol/program";
 import type { TestCase, TestSuite } from "@/engine/core/protocol/testing";
 import { BreakpointsPanel } from "@/features/breakpoints/BreakpointsPanel";
 import { ComplexityPanel } from "@/features/complexity/ComplexityPanel";
 import { ConsolePanel } from "@/features/console/ConsolePanel";
-import { CodeEditor, type EditorDiagnostic } from "@/features/editor/CodeEditor";
+import { CodeEditor, type EditorDiagnostic, type EditorReveal } from "@/features/editor/CodeEditor";
 import { languageServiceFor } from "@/features/editor/languageServices";
 import type { ExecutionMark } from "@/features/editor/executionLine";
 import { ExecutionFlow } from "@/features/flow/ExecutionFlow";
@@ -61,9 +68,11 @@ import {
   canSwitchLanguage,
   docKey,
   loadWorkspace,
+  validateFilePath,
   MAX_FILE_CHARS,
   MAX_FILES,
   newFileId,
+  refOfKey,
   resolveDoc,
   saveWorkspace,
   workspaceReducer,
@@ -71,7 +80,16 @@ import {
   type DocRef,
   type WorkspaceAction,
 } from "./files";
-import { bannerFor, RunBanner, type BannerMessage } from "./RunBanner";
+import { tabLabel } from "./fileTree";
+import {
+  docKeyOfFile,
+  lonelyRun,
+  planRun,
+  sourcesChanged,
+  tracedRunOf,
+  type TracedRun,
+} from "./runPlan";
+import { bannerFor, RunBanner, type BannerMessage, type Navigate } from "./RunBanner";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { easeOut, FADE_UP, SWAP_Y } from "@/components/motion";
@@ -173,7 +191,9 @@ export default function Workspace() {
 
   const source = useRef(doc.source);
   /** Editor text when the current trace was started (a traced test case appends a call). */
-  const [tracedSource, setTracedSource] = useState<string | null>(null);
+  const [traced, setTraced] = useState<TracedRun | null>(null);
+  /** A location to show in the editor (from a diagnostic, the call stack or an import). */
+  const [reveal, setReveal] = useState<EditorReveal | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingStep = useRef<number | null>(Number.isInteger(launch.step) ? launch.step : null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -219,6 +239,18 @@ export default function Workspace() {
         details: ["Browser storage is full or unavailable. Copy anything you want to keep."],
       }
     : null;
+
+  /** Applies a path the user typed once it passes `check`; otherwise says why it does not. */
+  const withPath = (
+    check: (input: string) => PathResult,
+    input: string,
+    failure: string,
+    apply: (path: string) => void,
+  ) => {
+    const checked = check(input);
+    if (checked.ok) apply(checked.path);
+    else notify(failure, checked.message, "danger");
+  };
 
   /** Adds or duplicates a file unless the workspace is full. */
   const addFile = (action: Extract<WorkspaceAction, { type: "create" | "duplicate" }>) => {
@@ -306,16 +338,24 @@ export default function Workspace() {
   const run = () => {
     if (empty || blockedByTypes()) return;
     flushEdit();
-    setTracedSource(source.current);
+    const plan = planRun(workspace, source.current);
+    if (!plan) return;
+    setTraced(tracedRunOf(plan));
     capture("code_run_started", {
-      language: languageId,
+      language: plan.languageId,
       document_kind: doc.ref.kind,
+      project_files: plan.project?.files.length ?? 1,
     });
     posthogLog("workspace execution started", {
-      language: languageId,
+      language: plan.languageId,
       document_kind: doc.ref.kind,
     });
-    actor.send({ type: "RUN", source: source.current, languageId });
+    actor.send({
+      type: "RUN",
+      source: plan.source,
+      languageId: plan.languageId,
+      project: plan.project,
+    });
   };
   const runTests = () => {
     if (empty || blockedByTypes()) return;
@@ -334,7 +374,7 @@ export default function Workspace() {
   };
   const traceCase = (testCase: TestCase) => {
     if (empty || blockedByTypes()) return;
-    setTracedSource(source.current);
+    setTraced(lonelyRun(doc.key, doc.path, source.current));
     capture("test_case_trace_started", { language: languageId });
     actor.send({
       type: "RUN",
@@ -405,7 +445,7 @@ export default function Workspace() {
   // Launch options for demos: run automatically.
   useEffect(() => {
     if (launch.autorun === "trace") {
-      setTracedSource(source.current);
+      setTraced(lonelyRun(doc.key, doc.path, source.current));
       actor.send({ type: "RUN", source: source.current, languageId });
     } else if (launch.autorun === "tests") {
       actor.send({ type: "RUN", source: source.current, languageId, suite });
@@ -463,21 +503,50 @@ export default function Workspace() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const currentSource = (key: string): string | undefined =>
+    key === doc.key ? doc.source : resolveDoc(workspace, refOfKey(key))?.source;
+  const entryFile = workspace.files.find((file) => file.id === workspace.entry);
+  const entryLabel = entryFile ? basename(entryFile.path) : "Open file";
+  const entryChoices = workspace.files.filter((file) => languageOfFile(file.path).projects);
+  const openPaths = workspace.tabs.flatMap((ref) => resolveDoc(workspace, ref)?.path ?? []);
   const sourceChanged =
-    trace.status !== "empty" && tracedSource !== null && doc.source !== tracedSource;
+    trace.status !== "empty" && traced !== null && sourcesChanged(traced, currentSource);
   const editorLines = doc.source.split("\n").length;
+  const programFiles = trace.program?.files ?? [];
+  /** The document the current step runs in (a project's step can be in any of its files). */
+  const executingKey = view?.loc ? docKeyOfFile(traced, programFiles, view.loc.file) : null;
   // Marked while running or once stepping has moved off the first step; a finished run resting
   // at its start (or code edited since) leaves the editor unmarked.
   const marked = busy || (trace.position > 0 && !sourceChanged);
   const execution = useMemo<ExecutionMark | null>(() => {
-    if (!marked || !view?.loc || view.loc.line > editorLines) return null;
+    if (!marked || !view?.loc || executingKey !== doc.key || view.loc.line > editorLines)
+      return null;
     return {
       line: view.loc.line,
       endLine: view.loc.role === "call" ? view.loc.line : view.loc.endLine,
       kind: view.kind === "call" ? "call" : "statement",
     };
-  }, [marked, view, editorLines]);
+  }, [marked, view, editorLines, executingKey, doc.key]);
 
+  // Stepping into another file shows that file; the user may then look elsewhere until the
+  // next step crosses into a different file.
+  /** Following only starts once the user steps: a run resting at its start stays where it is. */
+  const stepping = !busy && trace.position > 0 && !sourceChanged;
+  const followed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!stepping || !executingKey || executingKey === followed.current) return;
+    followed.current = executingKey;
+    if (executingKey !== doc.key) openDoc(refOfKey(executingKey));
+    // Only the executing file changing moves the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [executingKey, stepping]);
+  useEffect(() => {
+    if (!stepping) followed.current = null;
+  }, [stepping]);
+
+  /** Whether a diagnostic from a run belongs to the open document. */
+  const isHere = (path: string | undefined): boolean =>
+    path === undefined ? traced?.entryKey === doc.key : path === doc.path;
   const diagnostics = useMemo<EditorDiagnostic[]>(() => {
     const fromCompile: readonly Diagnostic[] =
       context.failure?.kind === "compile" ? context.failure.diagnostics : [];
@@ -485,7 +554,11 @@ export default function Workspace() {
     const thrown: EditorDiagnostic[] = [];
     if (trace.outcome?.kind === "exception" && trace.outcome.loc !== null) {
       const loc = trace.program?.locs[trace.outcome.loc];
-      if (loc && loc.line <= editorLines) {
+      if (
+        loc &&
+        loc.line <= editorLines &&
+        docKeyOfFile(traced, programFiles, loc.file) === doc.key
+      ) {
         thrown.push({
           severity: "error",
           message: `Uncaught ${trace.outcome.message}`,
@@ -493,8 +566,45 @@ export default function Workspace() {
         });
       }
     }
-    return [...fromCompile, ...warnings, ...thrown];
-  }, [context.failure, trace.program, trace.outcome, editorLines]);
+    return [...[...fromCompile, ...warnings].filter((d) => isHere(d.path)), ...thrown];
+    // `isHere` and `programFiles` derive from the dependencies listed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context.failure, trace.program, trace.outcome, editorLines, traced, doc.key, doc.path]);
+
+  /** Opens a document (if another is showing) and puts the caret at a place in it. */
+  const revealIn = (key: string, line: number, column: number) => {
+    if (key !== doc.key) openDoc(refOfKey(key));
+    setReveal({ docKey: key, line, column, nonce: Date.now() });
+  };
+
+  /** Opens a file of the project and shows a location in it. */
+  const navigate: Navigate = ({ path, line, column }) => {
+    const target = workspace.files.find((file) => file.path === path);
+    if (target) revealIn(docKey({ kind: "file", id: target.id }), line, column);
+  };
+
+  /** Playback pauses at a place that has a breakpoint in the document it belongs to. */
+  const isBreakpoint = useCallback(
+    ({ file, line }: { file: number; line: number }): boolean => {
+      const key = docKeyOfFile(traced, trace.program?.files ?? [], file);
+      return key !== null && (workspace.breakpoints[key] ?? []).includes(line);
+    },
+    [traced, trace.program, workspace.breakpoints],
+  );
+
+  /** Shows a place of the traced code: the file it is in, at that line. */
+  const showTraceLocation = ({
+    file,
+    line,
+    column,
+  }: {
+    file: number;
+    line: number;
+    column: number;
+  }) => {
+    const key = docKeyOfFile(traced, programFiles, file);
+    if (key) revealIn(key, line, column);
+  };
 
   const banner = bannerFor(
     context.failure,
@@ -527,6 +637,7 @@ export default function Workspace() {
       <div className="min-h-0 flex-1 pt-2">
         <CodeEditor
           key={`${doc.key}:${generation}`}
+          reveal={reveal?.docKey === doc.key ? reveal : null}
           initialValue={doc.source}
           languageId={languageId}
           execution={execution}
@@ -637,7 +748,7 @@ export default function Workspace() {
           </button>
         </div>
       </div>
-      <RunBanner message={banner} />
+      <RunBanner message={banner} onNavigate={navigate} />
       <div className="thin-scroll min-h-0 flex-1 overflow-auto">
         {view ? (
           <ExecutionFlow
@@ -687,7 +798,13 @@ export default function Workspace() {
 
   const inspectorPane = (
     <div className={`flex h-full min-h-0 flex-col overflow-hidden ${card}`}>
-      <Inspector view={view} focus={focus} onFocus={setFocus} />
+      <Inspector
+        view={view}
+        focus={focus}
+        onFocus={setFocus}
+        files={programFiles}
+        onJumpTo={showTraceLocation}
+      />
     </div>
   );
 
@@ -746,11 +863,11 @@ export default function Workspace() {
       disabled: trace.totalSteps === 0,
       onSelect: () => {
         downloadText(
-          `${doc.name.replace(/\.[^.]+$/, "")}-trace.json`,
+          `${doc.path.replace(/\.[^.]+$/, "")}-trace.json`,
           JSON.stringify(
             {
-              file: doc.name,
-              source: tracedSource,
+              file: doc.path,
+              source: traced?.sources ?? null,
               steps: store.summaries(0, trace.totalSteps),
               console: trace.console,
               outcome: trace.outcome,
@@ -921,12 +1038,32 @@ export default function Workspace() {
           <Sidebar
             ref={searchInput}
             files={workspace.files}
+            entry={workspace.entry}
             active={workspace.active}
             onOpen={openDoc}
+            onSetEntry={(id) => dispatch({ type: "entry", id })}
             onNewFile={(name, text) =>
               addFile({ type: "create", id: newFileId(), name, source: text })
             }
-            onRename={(id, name) => dispatch({ type: "rename", id, name })}
+            onRename={(id, name) =>
+              withPath(validateFilePath, name, "Can't rename the file", (path) =>
+                dispatch({ type: "rename", id, name: path }),
+              )
+            }
+            onRenameFolder={(from, to) =>
+              withPath(normalizePath, to, "Can't rename the folder", (path) => {
+                dispatch({ type: "renameFolder", from, to: path });
+                capture("workspace_folder_renamed");
+              })
+            }
+            folders={workspace.folders}
+            onNewFolder={(path) =>
+              withPath(normalizePath, path, "Can't create the folder", (valid) => {
+                dispatch({ type: "createFolder", path: valid });
+                capture("workspace_folder_created");
+              })
+            }
+            onDeleteFolder={(path) => dispatch({ type: "deleteFolder", path })}
             onDuplicate={(id) => addFile({ type: "duplicate", id, newId: newFileId() })}
             onDelete={(id) => {
               dispatch({ type: "delete", id });
@@ -992,17 +1129,22 @@ export default function Workspace() {
                         role="tab"
                         aria-selected={active}
                         onClick={() => openDoc(ref)}
-                        title={tab.name}
+                        title={tab.path}
                         className="flex min-w-0 items-center gap-2"
                       >
-                        <span className="max-w-40 truncate font-mono">{tab.name}</span>
+                        <span className="max-w-40 truncate font-mono">
+                          {tabLabel(tab.path, openPaths)}
+                        </span>
+                        {ref.kind === "file" && ref.id === workspace.entry && (
+                          <Flag size={11} className="text-accent" aria-label="Entry point" />
+                        )}
                         {active && (
                           <span className="size-1.5 rounded-full bg-ink" aria-label="active file" />
                         )}
                       </button>
                       <button
                         type="button"
-                        aria-label={`Close ${tab.name}`}
+                        aria-label={`Close ${tab.path}`}
                         onClick={() => closeTab(ref)}
                         className="grid size-5 place-items-center rounded text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-3 hover:text-ink focus-visible:opacity-100"
                       >
@@ -1074,12 +1216,41 @@ export default function Workspace() {
                   inspectorOpen ? "text-accent" : "text-muted hover:text-ink"
                 }`}
               >
-                <PanelRight size={16} />
+                <ScanSearch size={16} />
               </button>
             )}
 
             {!empty && (
               <>
+                <Menu
+                  label="Entry point"
+                  align="end"
+                  trigger={
+                    <button
+                      type="button"
+                      title="The file Run starts from"
+                      className={`${outlineButton} max-w-48 justify-between`}
+                    >
+                      <Flag size={14} className="shrink-0 text-muted" />
+                      <span className="truncate font-mono">{entryLabel}</span>
+                      <ChevronDown size={15} className="shrink-0 text-muted" />
+                    </button>
+                  }
+                  items={[
+                    {
+                      label: "Open file",
+                      hint: workspace.entry === null ? "✓" : undefined,
+                      onSelect: () => dispatch({ type: "entry", id: null }),
+                    },
+                    "separator",
+                    ...entryChoices.map((file) => ({
+                      label: file.path,
+                      hint: workspace.entry === file.id ? "✓" : undefined,
+                      onSelect: () => dispatch({ type: "entry", id: file.id }),
+                    })),
+                  ]}
+                />
+
                 <Menu
                   label="Language"
                   align="end"
@@ -1264,7 +1435,7 @@ export default function Workspace() {
                         store={store}
                         position={trace.position}
                         total={trace.totalSteps}
-                        breakpoints={breakpoints}
+                        isBreakpoint={isBreakpoint}
                         onShowShortcuts={() => setShortcutsOpen(true)}
                       />
                     </div>

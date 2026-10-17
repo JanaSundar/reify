@@ -9,9 +9,12 @@ import type {
   TestRequest,
 } from "../core/protocol/messages";
 import { encodeEvents } from "../core/protocol/eventCodec";
+import type { RunOutcome } from "../core/protocol/limits";
+import { browserModuleStore } from "../core/project/ModuleStore";
 import { TraceRecorder } from "../core/runtime/TraceRecorder";
 import { loadCompiler, loadRuntime, loadService } from "../languages/registry";
 import type { LanguageRuntime } from "../languages/types";
+import type { ProjectCompiler } from "./ProjectCompiler";
 
 type Post<T> = (message: T) => void;
 /** Posts a message, moving (not copying) the listed buffers to the receiver. */
@@ -21,14 +24,35 @@ type Clock = () => number;
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+/** One project compiler per compiler worker, so scans and compiled modules are reused. */
+let sharedProjects: Promise<ProjectCompiler> | null = null;
+const sharedProjectCompiler = (): Promise<ProjectCompiler> => {
+  sharedProjects ??= Promise.all([
+    import("./ProjectCompiler"),
+    import("../languages/projectHost"),
+  ]).then(
+    ([{ ProjectCompiler }, { projectHost }]) =>
+      new ProjectCompiler(projectHost, browserModuleStore, crypto.randomUUID()),
+  );
+  return sharedProjects;
+};
+
 /** Compiler worker logic, independent of the worker global so it can be tested directly. */
 export const handleCompile = async (
   request: CompileRequest,
   post: Post<CompilerWorkerMessage>,
   now: Clock,
+  projects: () => Promise<ProjectCompiler> = sharedProjectCompiler,
 ): Promise<void> => {
   const started = now();
   try {
+    const projectCompiler = request.project ? await projects() : null;
+    if (request.project && projectCompiler?.entryImports(request.project)) {
+      post({ type: "ready", runId: request.runId });
+      const result = await projectCompiler.compile(request.project);
+      post({ type: "compiled", runId: request.runId, result, compileMs: now() - started });
+      return;
+    }
     const compiler = await loadCompiler(request.languageId);
     if (!compiler) {
       post({
@@ -113,6 +137,16 @@ const runtimeFor = async (
   }
 };
 
+const executeProject = (
+  runtime: LanguageRuntime,
+  entryUrl: string,
+  recorder: TraceRecorder,
+  limits: ExecuteRequest["limits"],
+): Promise<RunOutcome> =>
+  runtime.executeModule
+    ? runtime.executeModule(entryUrl, recorder, limits)
+    : Promise.reject(new Error(`${runtime.languageId} does not support multi-file projects.`));
+
 /**
  * Runtime worker logic: executes one program and streams batched events. The worker is
  * single-use; the coordinator terminates it afterwards.
@@ -132,7 +166,9 @@ export const handleExecute = async (
   const started = env.now();
   let outcome;
   try {
-    outcome = runtime.execute(request.code, recorder, request.limits);
+    outcome = request.entryUrl
+      ? await executeProject(runtime, request.entryUrl, recorder, request.limits)
+      : runtime.execute(request.code, recorder, request.limits);
   } catch (error) {
     env.post({ type: "failure", runId, message: `Runtime crashed: ${errorText(error)}` }, []);
     return;

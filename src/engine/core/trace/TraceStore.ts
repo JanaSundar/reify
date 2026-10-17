@@ -209,16 +209,21 @@ export class TraceStore {
     return result;
   }
 
-  /** Source line a step starts on (null for set-up steps). Constant time. */
-  lineAt(step: number): number | null {
+  /** Where a step starts: its file and source line (null for set-up steps). Constant time. */
+  locAt(step: number): { readonly file: number; readonly line: number } | null {
     const program = this.program;
     if (!program) return null;
     const end = this.stepStarts[step + 1] ?? this.events.length;
     for (let i = this.stepStarts[step] ?? end; i < end; i++) {
       const event = this.events[i]!;
-      if (isStepBoundary(event) && "l" in event) return program.locs[event.l]?.line ?? null;
+      if (isStepBoundary(event) && "l" in event) return program.locs[event.l] ?? null;
     }
     return null;
+  }
+
+  /** Source line a step starts on (null for set-up steps). Constant time. */
+  lineAt(step: number): number | null {
+    return this.locAt(step)?.line ?? null;
   }
 
   // ---------------------------------------------------------------- internals

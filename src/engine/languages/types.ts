@@ -21,6 +21,16 @@ export interface LanguageRuntime {
    * failure is reported through the returned outcome.
    */
   execute(code: string, recorder: TraceRecorder, limits: ExecutionLimits): RunOutcome;
+  /**
+   * Executes a project: loads the entry module from `entryUrl`, which imports its
+   * dependencies itself. Optional: only languages that support projects provide it. Must not
+   * reject: every failure is reported through the returned outcome.
+   */
+  executeModule?(
+    entryUrl: string,
+    recorder: TraceRecorder,
+    limits: ExecutionLimits,
+  ): Promise<RunOutcome>;
   /** Runs one test case against a fresh program instance. Must not throw. */
   runTest(code: string, suite: TestSuite, testCase: TestCase, limits: ExecutionLimits): TestResult;
 }

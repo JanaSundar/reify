@@ -1,7 +1,7 @@
 import { EventKind, type TraceEvent } from "../protocol/events";
 import type { BindingId, ProgramInfo } from "../protocol/program";
 import type { EncodedValue, HeapId, HeapObject } from "../protocol/values";
-import { previewValue } from "./describe";
+import { placeOf, previewValue } from "./describe";
 
 export type StepEventKind =
   | "start"
@@ -98,7 +98,7 @@ export const summarizeStep = (
     case EventKind.Drop:
       return result("start", "");
     case EventKind.Line:
-      return result("line", program.locs[best.l] ? `line ${program.locs[best.l]!.line}` : "");
+      return result("line", program.locs[best.l] ? placeOf(program, program.locs[best.l]!) : "");
     case EventKind.Call:
       return result(
         "call",

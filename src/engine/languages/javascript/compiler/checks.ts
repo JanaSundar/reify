@@ -4,9 +4,10 @@ import type { DiagnosticLog } from "./tables";
 
 /**
  * Rejects constructs the tracer cannot follow faithfully. Rejecting is preferred over
- * producing an incomplete or misleading trace.
+ * producing an incomplete or misleading trace. Static imports are allowed only when the file
+ * is a module of a project (`modules`); dynamic `import()` never is.
  */
-export const unsupportedVisitor = (log: DiagnosticLog): Visitor => ({
+export const unsupportedVisitor = (log: DiagnosticLog, modules = false): Visitor => ({
   Function(path) {
     const { node } = path;
     if (node.async) {
@@ -23,7 +24,8 @@ export const unsupportedVisitor = (log: DiagnosticLog): Visitor => ({
     log.error("unsupported-module", "Dynamic `import()` is not available.", path.node);
   },
   ImportDeclaration(path) {
-    log.error("unsupported-module", "Modules and imports are not supported.", path.node);
+    if (!modules)
+      log.error("unsupported-module", "Modules and imports are not supported.", path.node);
   },
   CallExpression(path) {
     const { callee } = path.node;

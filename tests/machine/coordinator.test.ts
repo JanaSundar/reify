@@ -14,7 +14,8 @@ import { FakeWorkers, ManualScheduler, type FakeWorker } from "./fakes";
 
 const PROGRAM: ProgramInfo = {
   languageId: "javascript",
-  locs: [{ line: 1, column: 0, endLine: 1, endColumn: 5, role: "statement", reads: [] }],
+  files: [{ id: 0, path: "main.js" }],
+  locs: [{ file: 0, line: 1, column: 0, endLine: 1, endColumn: 5, role: "statement", reads: [] }],
   bindings: [],
   warnings: [],
   complexity: null,

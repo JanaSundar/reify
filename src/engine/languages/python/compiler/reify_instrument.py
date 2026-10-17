@@ -17,7 +17,7 @@ import json
 import symtable
 
 from reify_complexity import complexity_shape
-from reify_protocol import RESERVED_PREFIX
+from reify_protocol import RESERVED_PREFIX, SINGLE_FILE_ID, SOURCE_PATH
 from reify_statements import Instrumenter
 from reify_tables import Diagnostics, Positions
 
@@ -133,6 +133,7 @@ def compile_program(source):
         "code": code,
         "program": {
             "languageId": "python",
+            "files": [{"id": SINGLE_FILE_ID, "path": SOURCE_PATH}],
             "locs": instrumenter.tables.locs,
             "bindings": instrumenter.tables.bindings,
             "warnings": diagnostics.warnings,

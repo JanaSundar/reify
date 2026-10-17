@@ -37,6 +37,8 @@ export class FakeWorker implements WorkerLike {
 
 export class FakeWorkers implements WorkerFactories {
   readonly created: FakeWorker[] = [];
+  /** Set to make `moduleServer` available (as in a browser); absent otherwise. */
+  moduleServer?: () => Promise<void>;
 
   compiler(): WorkerLike {
     return this.make("compiler");
