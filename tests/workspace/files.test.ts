@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { languageById } from "@/engine/languages/catalog";
 import {
+  canSwitchLanguage,
   docKey,
   initialWorkspace,
   MAX_FILES,
@@ -39,10 +40,10 @@ describe("workspace files", () => {
   });
 
   it("renames with the language extension and keeps names unique", () => {
-    let state = workspaceReducer(start(), { type: "open", ref: { kind: "file", id: "index" } });
+    let state = workspaceReducer(start(), { type: "create", id: "a" });
     state = workspaceReducer(state, { type: "language", languageId: "typescript" });
-    expect(resolveDoc(state, state.active)!.name).toBe("index.ts");
-    state = workspaceReducer(state, { type: "rename", id: "index", name: "utils.js" });
+    expect(resolveDoc(state, state.active)!.name).toBe("untitled.ts");
+    state = workspaceReducer(state, { type: "rename", id: "a", name: "utils.js" });
     expect(resolveDoc(state, state.active)!.name).toBe("utils-2.js");
   });
 
@@ -99,17 +100,21 @@ describe("workspace files", () => {
     expect(doc.source.startsWith("# ")).toBe(true);
   });
 
-  it("switching language rewrites an untouched starter but keeps edited code", () => {
+  it("switches the language of an untouched file and rewrites its starter", () => {
     let state = workspaceReducer(start(), { type: "create", id: "a" });
     state = workspaceReducer(state, { type: "language", languageId: "python" });
-    let doc = resolveDoc(state, state.active)!;
+    const doc = resolveDoc(state, state.active)!;
     expect(doc.name).toBe("untitled.py");
     expect(doc.source).toBe(newFileSource(languageById("python")));
+  });
 
+  it("keeps the language of a file that has code", () => {
+    let state = workspaceReducer(start(), { type: "create", id: "a", name: "solve.py" });
     state = workspaceReducer(state, { type: "edit", source: "print(1)\n" });
+    expect(canSwitchLanguage(resolveDoc(state, state.active)!)).toBe(false);
     state = workspaceReducer(state, { type: "language", languageId: "javascript" });
-    doc = resolveDoc(state, state.active)!;
-    expect(doc.name).toBe("untitled.js");
+    const doc = resolveDoc(state, state.active)!;
+    expect(doc.name).toBe("solve.py");
     expect(doc.source).toBe("print(1)\n");
   });
 });

@@ -13,7 +13,7 @@ import type {
   RunPhase,
   RunRequest,
 } from "@/engine/core/coordinator/ExecutionCoordinator";
-import type { StaticComplexity } from "@/engine/core/analysis/complexity";
+import type { StaticComplexity } from "@/engine/core/analysis/staticEstimate";
 import type { RunOutcome, RunStats } from "@/engine/core/protocol/limits";
 import type { TestResult, TestSuite } from "@/engine/core/protocol/testing";
 

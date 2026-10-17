@@ -20,7 +20,7 @@ import sys
 import time
 from collections import deque
 
-from reify_instrument import ALLOWED_MODULES, NO_BINDING, RESERVED_PREFIX
+from reify_protocol import ALLOWED_MODULES, NO_BINDING, RESERVED_PREFIX
 
 # Captured before user code runs, so user code that rebinds builtins cannot change inspection.
 _BaseException = builtins.BaseException

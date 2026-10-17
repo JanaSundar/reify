@@ -1,8 +1,10 @@
+import { loadPyodide } from "pyodide";
 import { beforeAll, describe, expect, it } from "vitest";
 import { EventKind } from "@/engine/core/protocol/events";
 import type { HeapObject } from "@/engine/core/protocol/values";
 import type { StepView } from "@/engine/core/trace/stepView";
 import type { PythonCompiler } from "@/engine/languages/python/compiler/PythonCompiler";
+import { PythonRuntime } from "@/engine/languages/python/runtime/PythonRuntime";
 import {
   compilerFor,
   PYODIDE_TIMEOUT_MS,
@@ -266,6 +268,16 @@ describe("Python runtime: test cases", () => {
 });
 
 describe("Python runtime: lockdown", () => {
+  it(
+    "loads without importing the compiler",
+    async () => {
+      const pyodide = await loadPyodide();
+      PythonRuntime.create("python", pyodide);
+      expect(pyodide.runPython("import sys\n'reify_instrument' in sys.modules")).toBe(false);
+    },
+    PYODIDE_TIMEOUT_MS,
+  );
+
   it("blocks Pyodide's JavaScript bridge", async () => {
     const run = await tracePython(
       compiler,

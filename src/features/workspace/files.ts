@@ -77,6 +77,13 @@ export const newFileSource = (language: Language): string =>
     "",
   ].join("\n");
 
+/**
+ * Whether a file may switch language: only while it holds no code of its own (empty, or the
+ * untouched starter comment). Switching renames the file; it never translates code.
+ */
+export const canSwitchLanguage = (file: { readonly name: string; readonly source: string }) =>
+  file.source.trim() === "" || file.source === newFileSource(languageOfFile(file.name));
+
 export const EMPTY_SUITE: TestSuite = { entry: "", target: "return", cases: [] };
 
 export const docKey = (ref: DocRef): string => `${ref.kind}:${ref.id}`;
@@ -210,18 +217,19 @@ export const workspaceReducer = (
     case "language": {
       if (active.kind !== "file") return state;
       const target = languageById(action.languageId);
-      return updateFile(state, active.id, (file) => ({
-        ...file,
-        name: uniqueName(
-          state.files.filter((f) => f.id !== file.id),
-          withLanguageExtension(file.name, target),
-        ),
-        // An untouched new file gets the starter comment in the new language's syntax.
-        source:
-          file.source === newFileSource(languageOfFile(file.name))
-            ? newFileSource(target)
-            : file.source,
-      }));
+      return updateFile(state, active.id, (file) =>
+        canSwitchLanguage(file)
+          ? {
+              ...file,
+              name: uniqueName(
+                state.files.filter((f) => f.id !== file.id),
+                withLanguageExtension(file.name, target),
+              ),
+              // The starter comment is rewritten in the new language's syntax.
+              source: file.source.trim() === "" ? file.source : newFileSource(target),
+            }
+          : file,
+      );
     }
     case "toggleBreakpoint": {
       const key = docKey(active);

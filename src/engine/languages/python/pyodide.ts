@@ -1,6 +1,7 @@
 import type { PyodideAPI } from "pyodide";
 import type { PyProxy } from "pyodide/ffi";
 import { version } from "pyodide/package.json";
+import REIFY_PROTOCOL from "./reify_protocol.py?raw";
 
 /**
  * Where the self-hosted runtime lives: `scripts/copy-pyodide.mjs` copies it to
@@ -43,13 +44,19 @@ const MODULE_DIR = "/reify";
 
 /**
  * Installs a Python module from source so it can be imported, and returns it. Modules are
- * plain files in Pyodide's in-memory file system (nothing is fetched).
+ * plain files in Pyodide's in-memory file system (nothing is fetched). The import caches are
+ * invalidated because Python caches directory listings by mtime, which can miss a file written
+ * moments after the previous one.
  */
 export const installPythonModule = (pyodide: PyodideAPI, name: string, source: string): PyProxy => {
   pyodide.FS.mkdirTree(MODULE_DIR);
   pyodide.FS.writeFile(`${MODULE_DIR}/${name}.py`, source);
   pyodide.runPython(
-    `import sys\nif ${JSON.stringify(MODULE_DIR)} not in sys.path: sys.path.insert(0, ${JSON.stringify(MODULE_DIR)})`,
+    `import importlib, sys\nif ${JSON.stringify(MODULE_DIR)} not in sys.path: sys.path.insert(0, ${JSON.stringify(MODULE_DIR)})\nimportlib.invalidate_caches()`,
   );
   return pyodide.pyimport(name);
 };
+
+/** Installs the small contract shared by Reify's compiler and runtime Python modules. */
+export const installReifyProtocol = (pyodide: PyodideAPI): PyProxy =>
+  installPythonModule(pyodide, "reify_protocol", REIFY_PROTOCOL);

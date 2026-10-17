@@ -8,8 +8,7 @@ import {
 import type { TestCase, TestResult, TestSuite } from "../../../core/protocol/testing";
 import type { TraceRecorder } from "../../../core/runtime/TraceRecorder";
 import type { LanguageRuntime } from "../../types";
-import INSTRUMENTER from "../compiler/reify_instrument.py?raw";
-import { installPythonModule, loadPyodideRuntime } from "../pyodide";
+import { installPythonModule, installReifyProtocol, loadPyodideRuntime } from "../pyodide";
 import { decodePythonEvents } from "./pythonEvents";
 import TRACER from "./reify_tracer.py?raw";
 
@@ -61,7 +60,7 @@ export class PythonRuntime implements LanguageRuntime {
    * passed in so tests can use Node's.
    */
   static create(languageId: string, pyodide: PyodideAPI): PythonRuntime {
-    installPythonModule(pyodide, "reify_instrument", INSTRUMENTER);
+    installReifyProtocol(pyodide);
     const tracer = installPythonModule(pyodide, "reify_tracer", TRACER);
     const execute = tracer.execute as ExecuteFn;
     const runTest = tracer.run_test as RunTestFn;

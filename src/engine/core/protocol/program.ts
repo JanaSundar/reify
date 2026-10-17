@@ -1,4 +1,4 @@
-import type { StaticComplexity } from "../analysis/complexity";
+import type { StaticComplexity } from "../analysis/staticEstimate";
 
 /**
  * Static information about a compiled program, produced by a language compiler.
