@@ -1,4 +1,6 @@
-# reify
+<h1 align="center">
+  <img src="https://tryreify.vercel.app/opengraph-image" alt="reify" width="600">
+</h1>
 
 **Make code tangible.** A browser-based execution visualizer for data structures and algorithms practice. Write your own
 JavaScript or TypeScript, run it, and step forward and backward through what it actually did:
