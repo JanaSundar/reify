@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildGraph, hasErrors } from "@/engine/core/project/graph";
 import { dependentsOf, evaluationOrder, findCycles } from "@/engine/core/project/order";
-import { cachedLanguage, ScanCache } from "@/engine/core/project/scanCache";
+import { KeyedCache } from "@/engine/core/project/KeyedCache";
+import { cachedLanguage } from "@/engine/core/project/scanCache";
+import type { ModuleScan } from "@/engine/core/project/types";
 import { hostFor, project, toyLanguage } from "./helpers";
 
 const graphOf = (files: Record<string, string>, entry?: string) => {
@@ -152,12 +154,12 @@ describe("dependentsOf", () => {
   });
 });
 
-describe("ScanCache", () => {
+describe("scan cache", () => {
   const files = { "main.toy": "import ./a.toy\nimport ./b.toy", "a.toy": "", "b.toy": "" };
 
   it("scans each file once while its source is unchanged", () => {
     const language = toyLanguage();
-    const cache = new ScanCache();
+    const cache = new KeyedCache<ModuleScan>();
     const host = hostFor(cachedLanguage(language, cache));
     buildGraph(project(files), host);
     buildGraph(project(files), host);
@@ -166,7 +168,7 @@ describe("ScanCache", () => {
 
   it("rescans only the file that changed", () => {
     const language = toyLanguage();
-    const cache = new ScanCache();
+    const cache = new KeyedCache<ModuleScan>();
     const host = hostFor(cachedLanguage(language, cache));
     buildGraph(project(files), host);
     const edited = buildGraph(project({ ...files, "a.toy": "import ./b.toy" }), host);
@@ -176,7 +178,7 @@ describe("ScanCache", () => {
 
   it("forgets files that were deleted", () => {
     const language = toyLanguage();
-    const cache = new ScanCache();
+    const cache = new KeyedCache<ModuleScan>();
     const host = hostFor(cachedLanguage(language, cache));
     buildGraph(project(files), host);
     cache.retain(new Set(["main.toy"]));

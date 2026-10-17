@@ -1,8 +1,7 @@
 import type { ModuleCompileResult, ModuleSlot, ProjectFile } from "../../../core/project/types";
-import { languageOfFile } from "../../catalog";
 import { t, type BabelTypes } from "../compiler/babel";
 import { instrumentProgram } from "../compiler/instrumentationPlugin";
-import { parseSource } from "../compiler/parse";
+import { parseModule } from "../compiler/parse";
 import { BindingTable, DiagnosticLog, LocTable } from "../compiler/tables";
 import { CONSOLE_PARAM, TRACER_GLOBAL, TRACER_PARAM } from "../traceApi";
 
@@ -50,11 +49,7 @@ export const compileModule = (
   slot: ModuleSlot,
   urlOf: (specifier: string) => string,
 ): ModuleCompileResult => {
-  const parsed = parseSource(file.source, {
-    fileName: file.path,
-    typescript: languageOfFile(file.path).id === "typescript",
-    sourceType: "module",
-  });
+  const parsed = parseModule(file);
   if (!parsed.ok) return { ok: false, diagnostics: [parsed.diagnostic] };
 
   const { ast } = parsed;

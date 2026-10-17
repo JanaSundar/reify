@@ -1,5 +1,6 @@
 import type { BindingInfo, LocInfo, ProgramInfo } from "../protocol/program";
 import { hasErrors } from "./graph";
+import { KeyedCache } from "./KeyedCache";
 import type { ModuleCompileResult, ModuleSlot, ProjectDiagnostic, ProjectGraph } from "./types";
 
 export interface BuiltModule {
@@ -21,35 +22,15 @@ export type ProjectBuildResult =
   | { readonly ok: false; readonly diagnostics: readonly ProjectDiagnostic[] };
 
 /**
- * Remembers each module's compile result while nothing it depends on has changed: its
- * source, its id slot and the urls it imports. Editing one file leaves the others' entries
- * valid unless its size change moved their slots.
- */
-export class CompileCache {
-  private readonly entries = new Map<string, { key: string; result: ModuleCompileResult }>();
-
-  get(path: string, key: string, compute: () => ModuleCompileResult): ModuleCompileResult {
-    const hit = this.entries.get(path);
-    if (hit?.key === key) return hit.result;
-    const result = compute();
-    this.entries.set(path, { key, result });
-    return result;
-  }
-
-  retain(paths: ReadonlySet<string>): void {
-    for (const path of this.entries.keys()) if (!paths.has(path)) this.entries.delete(path);
-  }
-}
-
-/**
- * Compiles every module of a graph and links their tables. `urlFor` is where each module
+ * Compiles every module of a graph and links their tables. Results are cached per module while
+ * nothing it depends on changes: its source, its id slot and the urls it imports. `urlFor` is where each module
  * will be served. The graph must be free of errors; otherwise nothing is compiled and its
  * diagnostics are returned, so an incomplete project is never built.
  */
 export const compileProject = (
   graph: ProjectGraph,
   urlFor: (path: string) => string,
-  cache = new CompileCache(),
+  cache = new KeyedCache<ModuleCompileResult>(),
 ): ProjectBuildResult => {
   if (hasErrors(graph)) return { ok: false, diagnostics: graph.diagnostics };
 

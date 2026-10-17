@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CompileCache, compileProject } from "@/engine/core/project/compileProject";
+import { compileProject } from "@/engine/core/project/compileProject";
+import { KeyedCache } from "@/engine/core/project/KeyedCache";
+import type { ModuleCompileResult } from "@/engine/core/project/types";
 import { buildGraph } from "@/engine/core/project/graph";
 import { hostFor, project, toyLanguage } from "./helpers";
 
@@ -66,10 +68,10 @@ describe("compileProject", () => {
   });
 });
 
-describe("CompileCache", () => {
+describe("compile cache", () => {
   it("recompiles nothing when nothing changed", () => {
     const { language, graph } = setup(FILES);
-    const cache = new CompileCache();
+    const cache = new KeyedCache<ModuleCompileResult>();
     compileProject(graph, urlFor, cache);
     compileProject(graph, urlFor, cache);
     expect(language.compiles).toHaveLength(3);
@@ -77,7 +79,7 @@ describe("CompileCache", () => {
 
   it("recompiles an edited module and only the later modules whose slots moved", () => {
     const language = toyLanguage();
-    const cache = new CompileCache();
+    const cache = new KeyedCache<ModuleCompileResult>();
     const host = hostFor(language);
     compileProject(buildGraph(project(FILES), host), urlFor, cache);
     language.compiles.length = 0;
@@ -99,7 +101,7 @@ describe("CompileCache", () => {
 
   it("recompiles when an import's url changes", () => {
     const { language, graph } = setup(FILES);
-    const cache = new CompileCache();
+    const cache = new KeyedCache<ModuleCompileResult>();
     compileProject(graph, urlFor, cache);
     language.compiles.length = 0;
     compileProject(graph, (path) => `/__reify/2/${path}`, cache);
@@ -108,7 +110,7 @@ describe("CompileCache", () => {
 
   it("drops entries of deleted files", () => {
     const { language, graph } = setup(FILES);
-    const cache = new CompileCache();
+    const cache = new KeyedCache<ModuleCompileResult>();
     compileProject(graph, urlFor, cache);
     cache.retain(new Set(["main.toy"]));
     language.compiles.length = 0;

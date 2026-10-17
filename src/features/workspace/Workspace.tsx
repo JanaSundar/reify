@@ -38,7 +38,7 @@ import {
   languageOfFile,
   type LanguageId,
 } from "@/engine/languages/catalog";
-import { basename, normalizePath } from "@/engine/core/project/paths";
+import { basename, normalizePath, type PathResult } from "@/engine/core/project/paths";
 import type { Diagnostic } from "@/engine/core/protocol/program";
 import type { TestCase, TestSuite } from "@/engine/core/protocol/testing";
 import { BreakpointsPanel } from "@/features/breakpoints/BreakpointsPanel";
@@ -239,6 +239,18 @@ export default function Workspace() {
         details: ["Browser storage is full or unavailable. Copy anything you want to keep."],
       }
     : null;
+
+  /** Applies a path the user typed once it passes `check`; otherwise says why it does not. */
+  const withPath = (
+    check: (input: string) => PathResult,
+    input: string,
+    failure: string,
+    apply: (path: string) => void,
+  ) => {
+    const checked = check(input);
+    if (checked.ok) apply(checked.path);
+    else notify(failure, checked.message, "danger");
+  };
 
   /** Adds or duplicates a file unless the workspace is full. */
   const addFile = (action: Extract<WorkspaceAction, { type: "create" | "duplicate" }>) => {
@@ -559,13 +571,16 @@ export default function Workspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context.failure, trace.program, trace.outcome, editorLines, traced, doc.key, doc.path]);
 
+  /** Opens a document (if another is showing) and puts the caret at a place in it. */
+  const revealIn = (key: string, line: number, column: number) => {
+    if (key !== doc.key) openDoc(refOfKey(key));
+    setReveal({ docKey: key, line, column, nonce: Date.now() });
+  };
+
   /** Opens a file of the project and shows a location in it. */
   const navigate: Navigate = ({ path, line, column }) => {
     const target = workspace.files.find((file) => file.path === path);
-    if (!target) return;
-    const ref: DocRef = { kind: "file", id: target.id };
-    if (docKey(ref) !== doc.key) openDoc(ref);
-    setReveal({ docKey: docKey(ref), line, column, nonce: Date.now() });
+    if (target) revealIn(docKey({ kind: "file", id: target.id }), line, column);
   };
 
   /** Playback pauses at a place that has a breakpoint in the document it belongs to. */
@@ -588,9 +603,7 @@ export default function Workspace() {
     column: number;
   }) => {
     const key = docKeyOfFile(traced, programFiles, file);
-    if (!key) return;
-    if (key !== doc.key) openDoc(refOfKey(key));
-    setReveal({ docKey: key, line, column, nonce: Date.now() });
+    if (key) revealIn(key, line, column);
   };
 
   const banner = bannerFor(
@@ -1032,25 +1045,24 @@ export default function Workspace() {
             onNewFile={(name, text) =>
               addFile({ type: "create", id: newFileId(), name, source: text })
             }
-            onRename={(id, name) => {
-              const checked = validateFilePath(name);
-              if (checked.ok) dispatch({ type: "rename", id, name: checked.path });
-              else notify("Can't rename the file", checked.message, "danger");
-            }}
-            onRenameFolder={(from, to) => {
-              const checked = normalizePath(to);
-              if (!checked.ok) return notify("Can't rename the folder", checked.message, "danger");
-              const before = workspace.files.length;
-              dispatch({ type: "renameFolder", from, to: checked.path });
-              capture("workspace_folder_renamed", { files: before });
-            }}
+            onRename={(id, name) =>
+              withPath(validateFilePath, name, "Can't rename the file", (path) =>
+                dispatch({ type: "rename", id, name: path }),
+              )
+            }
+            onRenameFolder={(from, to) =>
+              withPath(normalizePath, to, "Can't rename the folder", (path) => {
+                dispatch({ type: "renameFolder", from, to: path });
+                capture("workspace_folder_renamed");
+              })
+            }
             folders={workspace.folders}
-            onNewFolder={(path) => {
-              const checked = normalizePath(path);
-              if (!checked.ok) return notify("Can't create the folder", checked.message, "danger");
-              dispatch({ type: "createFolder", path: checked.path });
-              capture("workspace_folder_created");
-            }}
+            onNewFolder={(path) =>
+              withPath(normalizePath, path, "Can't create the folder", (valid) => {
+                dispatch({ type: "createFolder", path: valid });
+                capture("workspace_folder_created");
+              })
+            }
             onDeleteFolder={(path) => dispatch({ type: "deleteFolder", path })}
             onDuplicate={(id) => addFile({ type: "duplicate", id, newId: newFileId() })}
             onDelete={(id) => {

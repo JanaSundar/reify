@@ -1,9 +1,10 @@
-import { CompileCache, compileProject } from "../core/project/compileProject";
+import { compileProject } from "../core/project/compileProject";
 import { buildGraph, type GraphHost } from "../core/project/graph";
 import { moduleUrl } from "../core/project/moduleServer";
 import type { ModulePublisher } from "../core/project/ModuleStore";
-import { cachedHost, ScanCache } from "../core/project/scanCache";
-import type { Project } from "../core/project/types";
+import { KeyedCache } from "../core/project/KeyedCache";
+import { cachedHost } from "../core/project/scanCache";
+import type { ModuleCompileResult, ModuleScan, Project } from "../core/project/types";
 import type { CompileResult } from "../core/protocol/messages";
 
 /**
@@ -12,8 +13,8 @@ import type { CompileResult } from "../core/protocol/messages";
  * modules between runs, so an edit only redoes the files it affects.
  */
 export class ProjectCompiler {
-  private readonly scans = new ScanCache();
-  private readonly compiles = new CompileCache();
+  private readonly scans = new KeyedCache<ModuleScan>();
+  private readonly compiles = new KeyedCache<ModuleCompileResult>();
 
   constructor(
     private readonly host: GraphHost,

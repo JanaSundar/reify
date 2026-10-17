@@ -88,6 +88,77 @@ function ItemButton({
 
 type FileMode = "rename" | "delete";
 
+/** One-line form for naming or renaming a file or folder; Escape cancels. */
+function NameForm({
+  ariaLabel,
+  defaultValue = "",
+  placeholder,
+  depth = 0,
+  selectRange,
+  commitOnBlur = false,
+  onSubmit,
+  onCancel,
+}: {
+  ariaLabel: string;
+  defaultValue?: string;
+  placeholder?: string;
+  depth?: number;
+  /** Part of the default to preselect (a file's name without its folder and extension). */
+  selectRange?: readonly [number, number];
+  /** Leaving the field saves it (as a file rename does) instead of discarding it. */
+  commitOnBlur?: boolean;
+  onSubmit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form
+      className="px-1 py-0.5"
+      style={{ paddingLeft: depth * 12 + 4 }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
+        onSubmit(input.value);
+      }}
+    >
+      <input
+        name="name"
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        autoFocus
+        onFocus={(event) => selectRange && event.currentTarget.setSelectionRange(...selectRange)}
+        onBlur={(event) => (commitOnBlur ? onSubmit(event.currentTarget.value) : onCancel())}
+        onKeyDown={(event) => event.key === "Escape" && onCancel()}
+        className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
+      />
+    </form>
+  );
+}
+
+/** Inline "are you sure" for deleting a file or folder. */
+function DeleteConfirm({
+  message,
+  depth = 0,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  depth?: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="px-1 py-0.5" style={{ paddingLeft: depth * 12 + 4 }}>
+      <InlineConfirm
+        message={message}
+        confirmLabel="Delete"
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+    </div>
+  );
+}
+
 /** What a file's actions do; shared by its row menu and its right-click menu. */
 const fileMenuItems = ({
   onMode,
@@ -154,49 +225,29 @@ function FileRow({
   const confirmingDelete = mode === "delete";
   if (confirmingDelete) {
     return (
-      <div className="px-1 py-0.5">
-        <InlineConfirm
-          message={`Delete ${file.path}? This can't be undone.`}
-          confirmLabel="Delete"
-          onConfirm={() => {
-            onMode(null);
-            onDelete();
-          }}
-          onCancel={() => onMode(null)}
-        />
-      </div>
+      <DeleteConfirm
+        message={`Delete ${file.path}? This can't be undone.`}
+        onConfirm={() => {
+          onMode(null);
+          onDelete();
+        }}
+        onCancel={() => onMode(null)}
+      />
     );
   }
   if (renaming) {
     return (
-      <form
-        className="px-1 py-0.5"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
-          onRename(input.value);
+      <NameForm
+        ariaLabel={`Rename ${file.path}`}
+        defaultValue={file.path}
+        selectRange={[file.path.lastIndexOf("/") + 1, file.path.lastIndexOf(".")]}
+        commitOnBlur
+        onSubmit={(value) => {
+          onRename(value);
           onMode(null);
         }}
-      >
-        <input
-          name="name"
-          defaultValue={file.path}
-          aria-label={`Rename ${file.path}`}
-          autoFocus
-          onFocus={(event) =>
-            event.currentTarget.setSelectionRange(
-              file.path.lastIndexOf("/") + 1,
-              file.path.lastIndexOf("."),
-            )
-          }
-          onBlur={(event) => {
-            onRename(event.currentTarget.value);
-            onMode(null);
-          }}
-          onKeyDown={(event) => event.key === "Escape" && onMode(null)}
-          className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
-        />
-      </form>
+        onCancel={() => onMode(null)}
+      />
     );
   }
   const actions = fileMenuItems({ onMode, onDuplicate, isEntry, onSetEntry });
@@ -296,28 +347,17 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
 
   /** The row where a new folder is named, inside `parent` ("" for the top level). */
   const folderNameRow = (parent: string, depth: number) => (
-    <form
+    <NameForm
       key="new-folder"
-      className="px-1 py-0.5"
-      style={{ paddingLeft: depth * 12 + 4 }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
-        if (input.value.trim())
-          onNewFolder(parent ? `${parent}/${input.value.trim()}` : input.value);
+      depth={depth}
+      ariaLabel="New folder name"
+      placeholder="Folder name"
+      onSubmit={(value) => {
+        if (value.trim()) onNewFolder(parent ? `${parent}/${value.trim()}` : value);
         setNamingFolder(null);
       }}
-    >
-      <input
-        name="name"
-        aria-label="New folder name"
-        placeholder="Folder name"
-        autoFocus
-        onBlur={() => setNamingFolder(null)}
-        onKeyDown={(event) => event.key === "Escape" && setNamingFolder(null)}
-        className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
-      />
-    </form>
+      onCancel={() => setNamingFolder(null)}
+    />
   );
 
   const newFileItems: (MenuItem | "separator")[] = [
@@ -416,37 +456,26 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
       return (
         <div key={node.path}>
           {editingFolder === "delete" ? (
-            <div className="px-1 py-0.5" style={{ paddingLeft: depth * 12 + 4 }}>
-              <InlineConfirm
-                message={`Delete ${node.path} and its files? This can't be undone.`}
-                confirmLabel="Delete"
-                onConfirm={() => {
-                  setFolderEdit(null);
-                  onDeleteFolder(node.path);
-                }}
-                onCancel={() => setFolderEdit(null)}
-              />
-            </div>
+            <DeleteConfirm
+              depth={depth}
+              message={`Delete ${node.path} and its files? This can't be undone.`}
+              onConfirm={() => {
+                setFolderEdit(null);
+                onDeleteFolder(node.path);
+              }}
+              onCancel={() => setFolderEdit(null)}
+            />
           ) : editingFolder === "rename" ? (
-            <form
-              className="px-1 py-0.5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
-                onRenameFolder(node.path, input.value);
+            <NameForm
+              depth={depth}
+              ariaLabel={`Rename folder ${node.path}`}
+              defaultValue={node.path}
+              onSubmit={(value) => {
+                onRenameFolder(node.path, value);
                 setFolderEdit(null);
               }}
-            >
-              <input
-                name="name"
-                defaultValue={node.path}
-                aria-label={`Rename folder ${node.path}`}
-                autoFocus
-                onBlur={() => setFolderEdit(null)}
-                onKeyDown={(event) => event.key === "Escape" && setFolderEdit(null)}
-                className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
-              />
-            </form>
+              onCancel={() => setFolderEdit(null)}
+            />
           ) : (
             <button
               type="button"

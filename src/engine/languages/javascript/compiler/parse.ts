@@ -1,4 +1,6 @@
+import type { ProjectFile } from "../../../core/project/types";
 import { pointRange, type Diagnostic } from "../../../core/protocol/program";
+import { languageOfFile } from "../../catalog";
 import { babelTransform, type BabelTypes } from "./babel";
 
 /** Options every Babel call here shares: never read the host's configuration. */
@@ -67,3 +69,11 @@ export const parseSource = (source: string, options: ParseOptions): ParseResult 
   if (!ast) return { ok: false, diagnostic: internalDiagnostic("no AST produced") };
   return { ok: true, ast };
 };
+
+/** Parses a file of a project as an ES module (TypeScript by its extension). */
+export const parseModule = (file: ProjectFile): ParseResult =>
+  parseSource(file.source, {
+    fileName: file.path,
+    typescript: languageOfFile(file.path).id === "typescript",
+    sourceType: "module",
+  });

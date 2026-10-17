@@ -1,23 +1,9 @@
 import type { ImportRef, ModuleScan, ProjectFile } from "../../../core/project/types";
-import { type SourceRange } from "../../../core/protocol/program";
-import { languageOfFile } from "../../catalog";
 import { babelTransformFromAst, t, type BabelTypes, type PluginObject } from "../compiler/babel";
-import { BABEL_OPTIONS, internalDiagnostic, parseSource } from "../compiler/parse";
+import { BABEL_OPTIONS, internalDiagnostic, parseModule } from "../compiler/parse";
+import { rangeOf } from "../compiler/tables";
 
-type Node = BabelTypes.Node;
 type SpecifierName = BabelTypes.Identifier | BabelTypes.StringLiteral;
-
-const rangeOf = (node: Node): SourceRange | null => {
-  const { loc } = node;
-  return loc
-    ? {
-        line: loc.start.line,
-        column: loc.start.column,
-        endLine: loc.end.line,
-        endColumn: loc.end.column,
-      }
-    : null;
-};
 
 const exportName = (name: SpecifierName): string =>
   name.type === "Identifier" ? name.name : name.value;
@@ -91,11 +77,7 @@ const collector = (found: ImportRef[], exported: string[]): PluginObject => ({
 
 /** Finds the imports of a JavaScript or TypeScript module (parsing it as an ES module). */
 export const scanImports = (file: ProjectFile): ModuleScan => {
-  const parsed = parseSource(file.source, {
-    fileName: file.path,
-    typescript: languageOfFile(file.path).id === "typescript",
-    sourceType: "module",
-  });
+  const parsed = parseModule(file);
   if (!parsed.ok) return { imports: [], diagnostics: [parsed.diagnostic] };
 
   const imports: ImportRef[] = [];
