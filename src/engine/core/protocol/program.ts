@@ -9,6 +9,20 @@ import type { StaticComplexity } from "../analysis/staticEstimate";
 export type LocId = number;
 /** Index into {@link ProgramInfo.bindings}. */
 export type BindingId = number;
+/** Index into {@link ProgramInfo.files}. */
+export type FileId = number;
+
+/** A source file a program was compiled from; `path` is relative to the project root. */
+export interface ProgramFile {
+  readonly id: FileId;
+  readonly path: string;
+}
+
+/** The id of the only file in a single-file program. */
+export const SINGLE_FILE_ID: FileId = 0;
+
+/** The file table of a single-file program. */
+export const singleFile = (path: string): readonly ProgramFile[] => [{ id: SINGLE_FILE_ID, path }];
 
 /** A source range in the user's original source (1-based lines, 0-based columns). */
 export interface SourceRange {
@@ -21,6 +35,8 @@ export interface SourceRange {
 export type LocRole = "statement" | "condition" | "loop" | "call" | "return" | "expression";
 
 export interface LocInfo extends SourceRange {
+  /** The file this range is in. */
+  readonly file: FileId;
   readonly role: LocRole;
   /** Names of variables read by this source construct (static analysis, best effort). */
   readonly reads: readonly string[];
@@ -54,6 +70,8 @@ export interface Diagnostic {
 
 export interface ProgramInfo {
   readonly languageId: string;
+  /** The source files, indexed by {@link FileId}. */
+  readonly files: readonly ProgramFile[];
   readonly locs: readonly LocInfo[];
   readonly bindings: readonly BindingInfo[];
   /** Non-fatal diagnostics (constructs that are executed but only partially traced). */

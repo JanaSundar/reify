@@ -10,6 +10,10 @@ TRACER = "__reify__"
 RESERVED_PREFIX = "__reify"
 NO_BINDING = -1
 
+# A single-file program has one file, with this id and path (mirrors `SINGLE_FILE_ID`).
+SINGLE_FILE_ID = 0
+SOURCE_PATH = "main.py"
+
 ALLOWED_MODULES = (
     "bisect",
     "collections",

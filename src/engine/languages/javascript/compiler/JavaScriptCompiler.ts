@@ -1,6 +1,6 @@
 import { estimateStatic } from "../../../core/analysis/staticEstimate";
 import type { CompileResult } from "../../../core/protocol/messages";
-import { pointRange, type Diagnostic } from "../../../core/protocol/program";
+import { pointRange, singleFile, type Diagnostic } from "../../../core/protocol/program";
 import type { LanguageCompiler } from "../../types";
 import { babelTransform, babelTransformFromAst, type BabelTypes, type PluginObject } from "./babel";
 import { normalizeVisitor, unsupportedVisitor } from "./checks";
@@ -104,6 +104,7 @@ export class JavaScriptCompiler implements LanguageCompiler {
       code,
       program: {
         languageId: this.languageId,
+        files: singleFile(this.fileName),
         locs: locs.locs,
         bindings: bindings.bindings,
         warnings: log.warnings,

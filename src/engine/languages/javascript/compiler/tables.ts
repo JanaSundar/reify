@@ -2,10 +2,12 @@ import type {
   BindingInfo,
   BindingKind,
   Diagnostic,
+  FileId,
   LocInfo,
   LocRole,
   SourceRange,
 } from "../../../core/protocol/program";
+import { SINGLE_FILE_ID } from "../../../core/protocol/program";
 import { TRACER_PARAM } from "../traceApi";
 import { t, type BabelTypes, type NodePath } from "./babel";
 
@@ -109,6 +111,9 @@ export const collectReads = (roots: readonly Node[]): string[] => {
 /** Interns source locations; the instrumented code refers to them by index. */
 export class LocTable {
   private readonly entries: LocInfo[] = [];
+
+  constructor(private readonly file: FileId = SINGLE_FILE_ID) {}
+
   private readonly cache = new WeakMap<Node, Map<LocRole, number>>();
 
   get locs(): readonly LocInfo[] {
@@ -126,7 +131,7 @@ export class LocTable {
     const range = explicit?.range ?? headRange(node);
     if (!range) return null;
     const reads = collectReads(explicit?.reads ?? readRoots(node));
-    const id = this.entries.push({ ...range, role, reads }) - 1;
+    const id = this.entries.push({ ...range, file: this.file, role, reads }) - 1;
     const byRole = this.cache.get(node) ?? new Map<LocRole, number>();
     byRole.set(role, id);
     this.cache.set(node, byRole);
