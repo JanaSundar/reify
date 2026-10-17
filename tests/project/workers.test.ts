@@ -179,3 +179,31 @@ describe("ExecutionCoordinator: projects", () => {
     expect(workers.compilers[0]!.posted.map((m) => (m as { runId: number }).runId)).toEqual([2]);
   });
 });
+
+describe("compiler worker: a project whose entry imports nothing", () => {
+  it("compiles as the lone script it always was, publishing nothing", async () => {
+    const publisher = new FakePublisher();
+    const compiler = new ProjectCompiler(projectHost, publisher, "ns1");
+    const out: CompilerWorkerMessage[] = [];
+    await handleCompile(
+      {
+        type: "compile",
+        runId: 9,
+        languageId: "javascript",
+        source: "console.log(1);",
+        project: { entry: "main.js", files: [{ path: "main.js", source: "console.log(1);" }] },
+      },
+      (m) => out.push(m),
+      () => 0,
+      async () => compiler,
+    );
+    expect(publisher.published).toEqual([]);
+    expect(out[1]).toMatchObject({
+      type: "compiled",
+      result: { ok: true, program: { files: [{ id: 0, path: "main.js" }] } },
+    });
+    const compiled = out[1];
+    if (compiled?.type !== "compiled" || !compiled.result.ok) throw new Error("not compiled");
+    expect(compiled.result.code).toContain("__lc$t");
+  });
+});

@@ -30,7 +30,10 @@ interface InspectorProps {
   readonly view: StepView | null;
   readonly focus: string | null;
   readonly onFocus: (name: string | null) => void;
-  readonly onJumpToLine?: (line: number) => void;
+  /** The run's files, by file id: frames name the file they were called from when there are several. */
+  readonly files?: readonly { readonly path: string }[];
+  /** Shows a place of the run's code in the editor. */
+  readonly onJumpTo?: (place: { file: number; line: number; column: number }) => void;
 }
 
 /** Marks something the current step changed. */
@@ -206,12 +209,16 @@ function VariablesTab({ view, focus, onFocus }: InspectorProps & { view: StepVie
   );
 }
 
+const NO_FILES: readonly { readonly path: string }[] = [];
+
 function StackTab({
   view,
-  onJumpToLine,
+  files = NO_FILES,
+  onJumpTo,
 }: {
   view: StepView;
-  onJumpToLine?: (line: number) => void;
+  files?: readonly { readonly path: string }[];
+  onJumpTo?: (place: { file: number; line: number; column: number }) => void;
 }) {
   const frames = view.frames.toReversed();
   return (
@@ -235,15 +242,19 @@ function StackTab({
             <button
               type="button"
               disabled={!frame.callLoc}
-              onClick={() => frame.callLoc && onJumpToLine?.(frame.callLoc.line)}
+              onClick={() => frame.callLoc && onJumpTo?.(frame.callLoc)}
               className={`w-full rounded-lg px-3 py-2 text-left font-mono text-[12.5px] ${
                 index === 0 ? `${TONE.violet} text-violet` : "text-text edge hover:bg-surface-2"
               }`}
             >
               {frame.name === "global" ? "global" : `${frame.name}()`}
               <span className="block text-[11px] text-muted">
-                {frame.callLoc ? `called on line ${frame.callLoc.line}` : "program"} ·{" "}
-                {frame.variables.length} variable{frame.variables.length === 1 ? "" : "s"}
+                {frame.callLoc
+                  ? files.length > 1
+                    ? `called at ${files[frame.callLoc.file]?.path}:${frame.callLoc.line}`
+                    : `called on line ${frame.callLoc.line}`
+                  : "program"}{" "}
+                · {frame.variables.length} variable{frame.variables.length === 1 ? "" : "s"}
               </span>
             </button>
           </motion.li>
@@ -290,7 +301,7 @@ function MemoryTab({ view }: { view: StepView }) {
 }
 
 /** Right-hand inspector: variables (searchable), call stack and memory. Remembers its tab. */
-export function Inspector({ view, focus, onFocus, onJumpToLine }: InspectorProps) {
+export function Inspector({ view, focus, onFocus, files, onJumpTo }: InspectorProps) {
   const [tab, setTab] = usePreference<InspectorTab>("inspector-tab", "variables", oneOf(TABS));
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -315,7 +326,7 @@ export function Inspector({ view, focus, onFocus, onJumpToLine }: InspectorProps
               className="flex min-h-0 flex-1 flex-col"
             >
               {tab === "variables" && <VariablesTab view={view} focus={focus} onFocus={onFocus} />}
-              {tab === "stack" && <StackTab view={view} onJumpToLine={onJumpToLine} />}
+              {tab === "stack" && <StackTab view={view} files={files} onJumpTo={onJumpTo} />}
               {tab === "memory" && <MemoryTab view={view} />}
             </motion.div>
           </AnimatePresence>

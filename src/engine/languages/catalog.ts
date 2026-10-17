@@ -10,6 +10,7 @@ export const LANGUAGES = [
     badge: "JS",
     extensions: ["js", "mjs", "jsx"],
     lineComment: "//",
+    projects: true,
   },
   {
     id: "typescript",
@@ -17,12 +18,23 @@ export const LANGUAGES = [
     badge: "TS",
     extensions: ["ts", "tsx"],
     lineComment: "//",
+    projects: true,
   },
-  { id: "python", label: "Python", badge: "PY", extensions: ["py"], lineComment: "#" },
+  {
+    id: "python",
+    label: "Python",
+    badge: "PY",
+    extensions: ["py"],
+    lineComment: "#",
+    projects: false,
+  },
 ] as const;
 
 export type Language = (typeof LANGUAGES)[number];
 export type LanguageId = Language["id"];
+
+/** The extensions a project file may have, for messages ("use .js, .ts or .py"). */
+export const KNOWN_EXTENSIONS: readonly string[] = LANGUAGES.flatMap((l) => l.extensions);
 
 export const DEFAULT_LANGUAGE: Language = LANGUAGES[0];
 

@@ -46,10 +46,10 @@ export const handleCompile = async (
 ): Promise<void> => {
   const started = now();
   try {
-    if (request.project) {
-      const compiler = await projects();
+    const projectCompiler = request.project ? await projects() : null;
+    if (request.project && projectCompiler?.entryImports(request.project)) {
       post({ type: "ready", runId: request.runId });
-      const result = await compiler.compile(request.project);
+      const result = await projectCompiler.compile(request.project);
       post({ type: "compiled", runId: request.runId, result, compileMs: now() - started });
       return;
     }

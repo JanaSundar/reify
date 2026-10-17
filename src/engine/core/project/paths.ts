@@ -33,6 +33,9 @@ export const normalizePath = (raw: string): PathResult => {
 /** The directory part of a normalized path ("" for a file at the project root). */
 export const dirname = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
+/** The file name part of a normalized path. */
+export const basename = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+
 /** `./x` and `../x`, as opposed to bare names (`pkg`) and absolute paths. */
 export const isRelativeSpecifier = (specifier: string): boolean =>
   specifier.startsWith("./") || specifier.startsWith("../");

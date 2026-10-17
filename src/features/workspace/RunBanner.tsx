@@ -8,11 +8,31 @@ import { easeOut } from "@/components/motion";
 
 type Tone = "danger" | "warning" | "muted";
 
+/** A place in a project file, which the banner lets the user jump to. */
+export interface BannerLocation {
+  readonly path: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+export type Navigate = (location: BannerLocation) => void;
+
+export type BannerDetail = string | (BannerLocation & { readonly text: string });
+
 export interface BannerMessage {
   readonly tone: Tone;
   readonly title: string;
-  readonly details: readonly string[];
+  readonly details: readonly BannerDetail[];
 }
+
+/** Describes a place as `path:line`, linking it when the diagnostic names a file. */
+const located = (
+  path: string | undefined,
+  line: number,
+  column: number,
+  text: string,
+): BannerDetail =>
+  path ? { path, line, column, text: `${path}:${line} — ${text}` } : `Line ${line}: ${text}`;
 
 /** Pure mapping from run results to a user-facing message. */
 export const bannerFor = (
@@ -26,18 +46,28 @@ export const bannerFor = (
       tone: "danger",
       title: "This code can't run yet",
       details: failure.diagnostics.map((d) =>
-        d.range ? `Line ${d.range.line}: ${d.message}` : d.message,
+        d.range
+          ? located(d.path, d.range.line, d.range.column, d.message)
+          : d.path
+            ? { path: d.path, line: 1, column: 0, text: `${d.path} — ${d.message}` }
+            : d.message,
       ),
     };
   }
   if (failure?.kind === "internal")
     return { tone: "danger", title: "Execution failed", details: [failure.message] };
   if (outcome?.kind === "exception") {
-    const line = outcome.loc !== null ? program?.locs[outcome.loc]?.line : undefined;
+    const loc = outcome.loc !== null ? program?.locs[outcome.loc] : undefined;
+    const path =
+      loc && program && program.files.length > 1 ? program.files[loc.file]?.path : undefined;
     return {
       tone: "danger",
       title: `Uncaught ${outcome.message}`,
-      details: line ? [`Thrown while running line ${line}.`] : [],
+      details: !loc
+        ? []
+        : path
+          ? [{ path, line: loc.line, column: loc.column, text: `Thrown in ${path}:${loc.line}` }]
+          : [`Thrown while running line ${loc.line}.`],
     };
   }
   if (outcome?.kind === "limit") {
@@ -70,7 +100,13 @@ const TONE_CLASS: Record<Tone, string> = {
   muted: "bg-surface-2 text-muted",
 };
 
-export function RunBanner({ message }: { message: BannerMessage | null }) {
+export function RunBanner({
+  message,
+  onNavigate,
+}: {
+  message: BannerMessage | null;
+  onNavigate?: Navigate;
+}) {
   const reduceMotion = useReducedMotion();
   return (
     <AnimatePresence initial={false}>
@@ -85,11 +121,23 @@ export function RunBanner({ message }: { message: BannerMessage | null }) {
           className={`mx-3 mt-3 rounded-xl px-3.5 py-2.5 text-sm ${TONE_CLASS[message.tone]}`}
         >
           <p className="font-medium">{message.title}</p>
-          {message.details.map((detail) => (
-            <p key={detail} className="mt-0.5 text-xs opacity-90">
-              {detail}
-            </p>
-          ))}
+          {message.details.map((detail) =>
+            typeof detail === "string" ? (
+              <p key={detail} className="mt-0.5 text-xs opacity-90">
+                {detail}
+              </p>
+            ) : (
+              <p key={detail.text} className="mt-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.(detail)}
+                  className="text-left underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                >
+                  {detail.text}
+                </button>
+              </p>
+            ),
+          )}
         </motion.div>
       )}
     </AnimatePresence>

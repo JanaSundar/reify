@@ -21,6 +21,16 @@ export class ProjectCompiler {
     private readonly namespace: string,
   ) {}
 
+  /**
+   * Whether the entry imports anything. A file that imports nothing is the lone script it
+   * always was, and keeps running as one (script semantics, the single-file trace).
+   */
+  entryImports(project: Project): boolean {
+    const entry = project.files.find((file) => file.path === project.entry);
+    const language = entry && this.host.languageOf(entry.path);
+    return Boolean(language && language.scan(entry).imports.length > 0);
+  }
+
   async compile(project: Project): Promise<CompileResult> {
     const graph = buildGraph(project, cachedHost(this.host, this.scans));
     const reachable = new Set(graph.modules.keys());
