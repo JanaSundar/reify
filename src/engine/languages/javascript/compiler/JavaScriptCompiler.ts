@@ -2,14 +2,10 @@ import { estimateStatic } from "../../../core/analysis/staticEstimate";
 import type { CompileResult } from "../../../core/protocol/messages";
 import { singleFile } from "../../../core/protocol/program";
 import type { LanguageCompiler } from "../../types";
-import { babelTransformFromAst, type PluginObject } from "./babel";
-import { normalizeVisitor, unsupportedVisitor } from "./checks";
 import { complexityShape } from "./complexity";
-import { Instrumenter } from "./instrument";
-import { BABEL_OPTIONS, internalDiagnostic, parseSource } from "./parse";
+import { instrumentProgram } from "./instrumentationPlugin";
+import { parseSource } from "./parse";
 import { BindingTable, DiagnosticLog, LocTable } from "./tables";
-
-const COMMON_OPTIONS = { ...BABEL_OPTIONS, sourceType: "script" } as const;
 
 /**
  * Compiles JavaScript or TypeScript into instrumented JavaScript.
@@ -42,22 +38,16 @@ export class JavaScriptCompiler implements LanguageCompiler {
     const bindings = new BindingTable();
     const log = new DiagnosticLog();
 
-    let code: string | null | undefined;
-    try {
-      code = babelTransformFromAst(ast, source, {
-        ...COMMON_OPTIONS,
-        filename: this.fileName,
-        plugins: [() => instrumentationPlugin(locs, bindings, log)],
-        comments: false,
-        code: true,
-        ast: false,
-      })?.code;
-    } catch (error) {
-      return { ok: false, diagnostics: [internalDiagnostic(error)] };
-    }
-
-    if (log.errors.length > 0) return { ok: false, diagnostics: log.errors };
-    if (code == null) return { ok: false, diagnostics: [internalDiagnostic("no code produced")] };
+    const instrumented = instrumentProgram({
+      ast,
+      source,
+      fileName: this.fileName,
+      locs,
+      bindings,
+      log,
+    });
+    if (!instrumented.ok) return instrumented;
+    const { code } = instrumented;
 
     return {
       ok: true,
@@ -73,25 +63,3 @@ export class JavaScriptCompiler implements LanguageCompiler {
     };
   }
 }
-
-const instrumentationPlugin = (
-  locs: LocTable,
-  bindings: BindingTable,
-  log: DiagnosticLog,
-): PluginObject => ({
-  visitor: {
-    Program(path) {
-      path.traverse(unsupportedVisitor(log));
-      if (log.errors.length > 0) {
-        path.stop();
-        return;
-      }
-      path.traverse(normalizeVisitor);
-      path.scope.crawl();
-      const instrumenter = new Instrumenter(locs, bindings, log);
-      path.traverse(instrumenter.visitor);
-      instrumenter.finishProgram(path);
-      path.stop();
-    },
-  },
-});

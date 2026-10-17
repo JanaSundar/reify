@@ -64,6 +64,8 @@ export interface Diagnostic {
   readonly severity: DiagnosticSeverity;
   readonly message: string;
   readonly range: SourceRange | null;
+  /** The project file the diagnostic is in; absent for single-file programs. */
+  readonly path?: string;
   /** Stable machine-readable code, e.g. `unsupported-async`, `syntax`. */
   readonly code: string;
 }

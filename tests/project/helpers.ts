@@ -1,15 +1,25 @@
 import type { Diagnostic } from "@/engine/core/protocol/program";
 import { resolveRelativeFile } from "@/engine/core/project/resolve";
-import type { ImportRef, Project, ProjectFile, ProjectLanguage } from "@/engine/core/project/types";
+import type {
+  ImportRef,
+  ModuleCompileResult,
+  ModuleSlot,
+  Project,
+  ProjectFile,
+  ProjectLanguage,
+} from "@/engine/core/project/types";
 
 /**
  * A toy language for the project model: each line is `import <specifier> [names…]`,
  * `dynamic <specifier>` or `syntax-error`. It exercises the model without a real parser.
  */
-export const toyLanguage = (id = "toy"): ProjectLanguage & { scans: number } => {
+export const toyLanguage = (
+  id = "toy",
+): ProjectLanguage & { scans: number; compiles: string[] } => {
   const language = {
     id,
     scans: 0,
+    compiles: [] as string[],
     scan(file: ProjectFile) {
       language.scans += 1;
       const imports: ImportRef[] = [];
@@ -28,6 +38,28 @@ export const toyLanguage = (id = "toy"): ProjectLanguage & { scans: number } => 
     },
     resolve: (specifier: string, from: string, exists: (path: string) => boolean) =>
       resolveRelativeFile(specifier, from, exists),
+    /** One location per line and one binding per `let`; fails on `compile-error`. */
+    compile: (file: ProjectFile, slot: ModuleSlot): ModuleCompileResult => {
+      language.compiles.push(`${file.path}@${slot.locBase}/${slot.bindingBase}`);
+      if (file.source.includes("compile-error"))
+        return {
+          ok: false,
+          diagnostics: [{ severity: "error", code: "boom", message: "no", range: null }],
+        };
+      const lines = file.source.split("\n");
+      const range = { line: 1, column: 0, endLine: 1, endColumn: 1 };
+      return {
+        ok: true,
+        module: {
+          code: file.source,
+          locs: lines.map(() => ({ ...range, file: slot.fileId, role: "statement", reads: [] })),
+          bindings: lines
+            .filter((line) => line.startsWith("let"))
+            .map(() => ({ name: "x", kind: "let", line: 1 })),
+          warnings: [],
+        },
+      };
+    },
   };
   return language;
 };

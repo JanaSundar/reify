@@ -4,6 +4,8 @@
  */
 export const TRACER_PARAM = "__lc$t";
 export const CONSOLE_PARAM = "console";
+/** Where the runtime leaves the tracer for the modules of a project (see `docs/multi-file-projects.md`). */
+export const TRACER_GLOBAL = "__reify_tracer";
 
 export const TraceApi = {
   /** `ln(loc)` — statement starts. */

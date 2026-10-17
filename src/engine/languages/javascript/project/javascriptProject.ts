@@ -1,5 +1,6 @@
 import { resolveRelativeFile } from "../../../core/project/resolve";
 import type { ProjectLanguage } from "../../../core/project/types";
+import { compileModule } from "./compileModule";
 import { scanImports } from "./scanImports";
 
 /**
@@ -16,6 +17,7 @@ const typescriptAlternatives = (path: string): readonly string[] => {
 export const javascriptProject: ProjectLanguage = {
   id: "javascript",
   scan: scanImports,
+  compile: compileModule,
   resolve: (specifier, from, exists) =>
     resolveRelativeFile(specifier, from, exists, typescriptAlternatives),
 };

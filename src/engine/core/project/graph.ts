@@ -123,7 +123,7 @@ export const buildGraph = (project: Project, host: GraphHost): ProjectGraph => {
         }
       }
     }
-    modules.set(path, { path, language, imports });
+    modules.set(path, { path, file: files.get(path)!, language, imports });
   }
   return { entry: entry.path, modules, diagnostics };
 };

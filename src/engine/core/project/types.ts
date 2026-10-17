@@ -1,4 +1,4 @@
-import type { Diagnostic, SourceRange } from "../protocol/program";
+import type { BindingInfo, Diagnostic, FileId, LocInfo, SourceRange } from "../protocol/program";
 
 /** A source file of a project; `path` is normalized (see `paths.ts`). */
 export interface ProjectFile {
@@ -16,6 +16,28 @@ export interface Project {
 export interface ProjectDiagnostic extends Diagnostic {
   readonly path: string;
 }
+
+/**
+ * Where a module's ids start. Locations and bindings are numbered project-wide, so each
+ * module is compiled knowing how many the modules before it hold (see docs/multi-file-projects.md).
+ */
+export interface ModuleSlot {
+  readonly fileId: FileId;
+  readonly locBase: number;
+  readonly bindingBase: number;
+}
+
+/** One compiled module: runnable code plus the table entries for its own ids. */
+export interface CompiledModule {
+  readonly code: string;
+  readonly locs: readonly LocInfo[];
+  readonly bindings: readonly BindingInfo[];
+  readonly warnings: readonly Diagnostic[];
+}
+
+export type ModuleCompileResult =
+  | { readonly ok: true; readonly module: CompiledModule }
+  | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
 
 /** One import found in a module's source. */
 export interface ImportRef {
@@ -46,6 +68,15 @@ export interface ProjectLanguage {
   scan(file: ProjectFile): ModuleScan;
   /** Maps an import specifier in `from` to a project file. `exists` tests project paths. */
   resolve(specifier: string, from: string, exists: (path: string) => boolean): Resolution;
+  /**
+   * Compiles one module. `urlOf` gives the url of each import's target (by the specifier
+   * written in the source); the compiled code must import its dependencies from those urls.
+   */
+  compile(
+    file: ProjectFile,
+    slot: ModuleSlot,
+    urlOf: (specifier: string) => string,
+  ): ModuleCompileResult;
 }
 
 export interface ResolvedImport {
@@ -55,6 +86,7 @@ export interface ResolvedImport {
 
 export interface ModuleNode {
   readonly path: string;
+  readonly file: ProjectFile;
   readonly language: ProjectLanguage;
   /** Resolved static imports, in source order (which is evaluation order). */
   readonly imports: readonly ResolvedImport[];
