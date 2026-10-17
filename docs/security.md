@@ -26,6 +26,19 @@ capabilities from the global object and its prototype chain (verified in the bro
 `undefined` to user code). `eval`, the `Function` constructor, `import()` and `with` are
 rejected at compile time.
 
+## Multi-file projects
+
+A project runs as native ES modules served from the Cache API by a service worker
+(`docs/multi-file-projects.md`).
+
+- The service worker answers only requests under `/__reify/` from the cache and never touches the
+  network. Imports are resolved at compile time to project files; bare, absolute and escaping
+  specifiers are rejected, and dynamic `import()` is a compile error.
+- While the entry module loads, the tracer is reachable as `globalThis.__reify_tracer` (each
+  module copies it on start and the runtime removes it afterwards). Single-file programs already
+  hand the tracer to user code as a wrapper argument, so this exposes nothing new: the tracer can
+  forge events in the user's own trace, nothing more.
+
 ## Not guaranteed
 
 - A Web Worker is not a security sandbox. A determined program can reach intrinsics that were

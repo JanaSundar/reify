@@ -1,3 +1,4 @@
+import type { GraphHost } from "./graph";
 import type { ModuleScan, ProjectFile, ProjectLanguage } from "./types";
 
 /**
@@ -27,3 +28,16 @@ export const cachedLanguage = (language: ProjectLanguage, cache: ScanCache): Pro
   ...language,
   scan: (file) => cache.get(file, (f) => language.scan(f)),
 });
+
+/** A host whose languages scan through `cache`; each language is wrapped once, keeping identity. */
+export const cachedHost = (host: GraphHost, cache: ScanCache): GraphHost => {
+  const wrapped = new Map<ProjectLanguage, ProjectLanguage>();
+  return {
+    languageOf: (path) => {
+      const language = host.languageOf(path);
+      if (!language) return undefined;
+      if (!wrapped.has(language)) wrapped.set(language, cachedLanguage(language, cache));
+      return wrapped.get(language);
+    },
+  };
+};

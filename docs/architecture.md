@@ -42,6 +42,8 @@ promise: **visualizations are derived from real execution, never from algorithm 
 - `src/engine/languages`: the seam for languages. `registry.ts` (workers) creates them lazily.
   A language provides a `LanguageCompiler` and a `LanguageRuntime`.
 - `src/engine/languages/javascript`: the first adapter (JavaScript and TypeScript share it).
+- `src/engine/core/project`: the language-neutral project model for multi-file runs (paths, import
+  graph, evaluation order, compile cache, module store). See `docs/multi-file-projects.md`.
 - `src/engine/workers`: thin worker entry points around the testable `handlers.ts`.
 - `src/features/*`: UI. `src/app`: routes (static SEO pages plus the client-only playground).
 

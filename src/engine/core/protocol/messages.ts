@@ -1,6 +1,7 @@
 import type { EncodedEvents } from "./eventCodec";
 import type { ExecutionLimits, RunOutcome } from "./limits";
 import type { CompletionResult, HoverInfo } from "./languageService";
+import type { Project } from "../project/types";
 import type { Diagnostic, ProgramInfo } from "./program";
 import type { TestResult, TestSuite } from "./testing";
 
@@ -15,11 +16,21 @@ export interface CompileRequest {
   readonly type: "compile";
   readonly runId: number;
   readonly languageId: string;
+  /** The program's source; for a project, the entry file's. */
   readonly source: string;
+  /** Present for a multi-file run: every file, compiled as native modules. */
+  readonly project?: Project;
 }
 
 export type CompileResult =
-  | { readonly ok: true; readonly code: string; readonly program: ProgramInfo }
+  | {
+      readonly ok: true;
+      /** The instrumented program; empty for a project, whose modules are published instead. */
+      readonly code: string;
+      readonly program: ProgramInfo;
+      /** Where a project's entry module is served from. */
+      readonly entryUrl?: string;
+    }
   | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
 
 export interface CompileResponse {
@@ -34,6 +45,8 @@ export interface ExecuteRequest {
   readonly runId: number;
   readonly languageId: string;
   readonly code: string;
+  /** Runs the project whose entry module is served at this url, instead of `code`. */
+  readonly entryUrl?: string;
   readonly limits: ExecutionLimits;
 }
 
@@ -127,12 +140,21 @@ const hasRunId = (value: Record<string, unknown>): boolean =>
   typeof value.runId === "number" && Number.isInteger(value.runId);
 
 /** Shallow structural validation; malformed messages are dropped, never trusted. */
+const isProject = (value: unknown): boolean =>
+  isObject(value) &&
+  typeof value.entry === "string" &&
+  Array.isArray(value.files) &&
+  value.files.every(
+    (file) => isObject(file) && typeof file.path === "string" && typeof file.source === "string",
+  );
+
 export const parseCompileRequest = (data: unknown): CompileRequest | null =>
   isObject(data) &&
   data.type === "compile" &&
   hasRunId(data) &&
   typeof data.languageId === "string" &&
-  typeof data.source === "string"
+  typeof data.source === "string" &&
+  (data.project === undefined || isProject(data.project))
     ? (data as unknown as CompileRequest)
     : null;
 
@@ -142,6 +164,7 @@ export const parseExecuteRequest = (data: unknown): ExecuteRequest | null =>
   hasRunId(data) &&
   typeof data.languageId === "string" &&
   typeof data.code === "string" &&
+  (data.entryUrl === undefined || typeof data.entryUrl === "string") &&
   isObject(data.limits)
     ? (data as unknown as ExecuteRequest)
     : null;

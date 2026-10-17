@@ -5,6 +5,7 @@ import {
   type TestResult,
   type TestSuite,
 } from "../../../core/protocol/testing";
+import { stripModuleRoot } from "../../../core/project/moduleServer";
 import { TraceRecorder } from "../../../core/runtime/TraceRecorder";
 import type { LanguageRuntime } from "../../types";
 import { CONSOLE_PARAM, TRACER_GLOBAL, TRACER_PARAM } from "../traceApi";
@@ -79,6 +80,8 @@ export class JavaScriptRuntime implements LanguageRuntime {
       await this.loadModule(entryUrl);
       return { kind: "ok" };
     } catch (error) {
+      // The engine names modules by url ("/__reify/…/a.js"); users know them by path.
+      if (error instanceof Error) error.message = stripModuleRoot(error.message);
       return failureOutcome(tracer, error);
     } finally {
       delete scope[TRACER_GLOBAL];
