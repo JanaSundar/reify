@@ -1,49 +1,15 @@
 import { estimateStatic } from "../../../core/analysis/staticEstimate";
 import type { CompileResult } from "../../../core/protocol/messages";
-import { pointRange, singleFile, type Diagnostic } from "../../../core/protocol/program";
+import { singleFile } from "../../../core/protocol/program";
 import type { LanguageCompiler } from "../../types";
-import { babelTransform, babelTransformFromAst, type BabelTypes, type PluginObject } from "./babel";
+import { babelTransformFromAst, type PluginObject } from "./babel";
 import { normalizeVisitor, unsupportedVisitor } from "./checks";
 import { complexityShape } from "./complexity";
 import { Instrumenter } from "./instrument";
+import { BABEL_OPTIONS, internalDiagnostic, parseSource } from "./parse";
 import { BindingTable, DiagnosticLog, LocTable } from "./tables";
 
-const COMMON_OPTIONS = {
-  sourceType: "script",
-  configFile: false,
-  babelrc: false,
-  browserslistConfigFile: false,
-} as const;
-
-interface BabelSyntaxError {
-  readonly message: string;
-  readonly loc?: { readonly line: number; readonly column: number };
-}
-
-/** Converts a Babel parse error into a diagnostic without Babel's code frame noise. */
-const syntaxDiagnostic = (error: unknown, fileName: string): Diagnostic => {
-  const { message, loc } = error as BabelSyntaxError;
-  const firstLine = (message ?? String(error)).split("\n")[0] ?? "";
-  // Babel prefixes the (possibly path-qualified) file name and suffixes `(line:column)`.
-  const prefix = firstLine.indexOf(`${fileName}: `);
-  const clean = (prefix >= 0 ? firstLine.slice(prefix + fileName.length + 2) : firstLine).replace(
-    /\s*\(\d+:\d+\)$/,
-    "",
-  );
-  return {
-    severity: "error",
-    code: "syntax",
-    message: clean,
-    range: loc ? pointRange(loc.line, loc.column) : null,
-  };
-};
-
-const internalDiagnostic = (error: unknown): Diagnostic => ({
-  severity: "error",
-  code: "internal",
-  message: `Instrumentation failed: ${error instanceof Error ? error.message : String(error)}`,
-  range: null,
-});
+const COMMON_OPTIONS = { ...BABEL_OPTIONS, sourceType: "script" } as const;
 
 /**
  * Compiles JavaScript or TypeScript into instrumented JavaScript.
@@ -62,19 +28,13 @@ export class JavaScriptCompiler implements LanguageCompiler {
   }
 
   compile(source: string): CompileResult {
-    let ast: BabelTypes.File | null | undefined;
-    try {
-      ast = babelTransform(source, {
-        ...COMMON_OPTIONS,
-        filename: this.fileName,
-        presets: this.typescript ? [["typescript", { onlyRemoveTypeImports: true }]] : [],
-        ast: true,
-        code: false,
-      })?.ast;
-    } catch (error) {
-      return { ok: false, diagnostics: [syntaxDiagnostic(error, this.fileName)] };
-    }
-    if (!ast) return { ok: false, diagnostics: [internalDiagnostic("no AST produced")] };
+    const parsed = parseSource(source, {
+      fileName: this.fileName,
+      typescript: this.typescript,
+      sourceType: "script",
+    });
+    if (!parsed.ok) return { ok: false, diagnostics: [parsed.diagnostic] };
+    const { ast } = parsed;
 
     // Analyse the type-stripped original before instrumentation rewrites it.
     const complexity = estimateStatic(complexityShape(ast.program, source));

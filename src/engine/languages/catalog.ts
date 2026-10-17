@@ -37,9 +37,13 @@ export const languageById = (id: LanguageId): Language => BY_ID.get(id)!;
 const extensionOf = (name: string): string | undefined =>
   /\.([^.]+)$/.exec(name)?.[1]?.toLowerCase();
 
+/** The language of a file name, by extension; `undefined` for unknown extensions. */
+export const knownLanguageOfFile = (name: string): Language | undefined =>
+  BY_EXTENSION.get(extensionOf(name) ?? "");
+
 /** The language of a file name, by extension; unknown extensions are JavaScript. */
 export const languageOfFile = (name: string): Language =>
-  BY_EXTENSION.get(extensionOf(name) ?? "") ?? DEFAULT_LANGUAGE;
+  knownLanguageOfFile(name) ?? DEFAULT_LANGUAGE;
 
 /** `name` with its language extension replaced by `language`'s primary one. */
 export const withLanguageExtension = (name: string, language: Language): string => {
