@@ -143,3 +143,15 @@ def compile_program(source):
 
 def compile_json(source):
     return json.dumps(compile_program(source))
+
+
+def syntax_diagnostics(source):
+    """The syntax errors CPython reports for `source` (a full compile; nothing runs)."""
+    source = source.replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        compile(source, "<reify>", "exec", dont_inherit=True)
+    except SyntaxError as error:
+        return [_syntax_diagnostic(error, Positions(source))]
+    except (ValueError, RecursionError, MemoryError):
+        pass
+    return []

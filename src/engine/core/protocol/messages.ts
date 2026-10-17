@@ -1,5 +1,6 @@
 import type { EncodedEvents } from "./eventCodec";
 import type { ExecutionLimits, RunOutcome } from "./limits";
+import type { CompletionResult, HoverInfo } from "./languageService";
 import type { Diagnostic, ProgramInfo } from "./program";
 import type { TestResult, TestSuite } from "./testing";
 
@@ -52,6 +53,28 @@ export interface TestRequest {
 export interface WarmRequest {
   readonly type: "warm";
   readonly languageId: string;
+}
+
+/** One editor question for a language service that lives in the compiler worker. */
+export type ServiceCall =
+  | { readonly method: "diagnostics" }
+  | { readonly method: "complete"; readonly pos: number; readonly explicit: boolean }
+  | { readonly method: "hover"; readonly pos: number };
+
+/** Carries the whole document, so a replaced worker needs no state handed over. */
+export interface ServiceRequest {
+  readonly type: "service";
+  readonly id: number;
+  readonly languageId: string;
+  readonly source: string;
+  readonly call: ServiceCall;
+}
+
+/** `result` is `null` when the language has no service or the call failed. */
+export interface ServiceResponse {
+  readonly type: "service-result";
+  readonly id: number;
+  readonly result: readonly Diagnostic[] | CompletionResult | HoverInfo | null;
 }
 
 /** The worker has loaded the run's language compiler or runtime and starts working. */
@@ -135,6 +158,29 @@ const isTestSuite = (value: unknown): boolean =>
       typeof c.args === "string" &&
       typeof c.expected === "string",
   );
+
+const isServiceCall = (value: unknown): value is ServiceCall =>
+  isObject(value) &&
+  (value.method === "diagnostics" ||
+    (value.method === "complete" &&
+      typeof value.pos === "number" &&
+      typeof value.explicit === "boolean") ||
+    (value.method === "hover" && typeof value.pos === "number"));
+
+export const parseServiceRequest = (data: unknown): ServiceRequest | null =>
+  isObject(data) &&
+  data.type === "service" &&
+  typeof data.id === "number" &&
+  typeof data.languageId === "string" &&
+  typeof data.source === "string" &&
+  isServiceCall(data.call)
+    ? (data as unknown as ServiceRequest)
+    : null;
+
+export const parseServiceResponse = (data: unknown): ServiceResponse | null =>
+  isObject(data) && data.type === "service-result" && typeof data.id === "number"
+    ? (data as unknown as ServiceResponse)
+    : null;
 
 export const parseWarmRequest = (data: unknown): WarmRequest | null =>
   isObject(data) && data.type === "warm" && typeof data.languageId === "string"

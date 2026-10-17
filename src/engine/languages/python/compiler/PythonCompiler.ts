@@ -1,4 +1,5 @@
 import type { PyodideAPI } from "pyodide";
+import type { PyProxy } from "pyodide/ffi";
 import { estimateStatic, type CostShape } from "../../../core/analysis/staticEstimate";
 import type { CompileResult } from "../../../core/protocol/messages";
 import type { LanguageCompiler } from "../../types";
@@ -26,6 +27,16 @@ type PythonCompileResult =
       };
     });
 
+/**
+ * Installs the instrumenter and its support modules into a loaded Pyodide and returns the
+ * `reify_instrument` module. Safe to call twice: the editor's language service imports it too.
+ */
+export const installInstrumenter = (pyodide: PyodideAPI): PyProxy => {
+  installReifyProtocol(pyodide);
+  for (const [name, source] of SUPPORT_MODULES) installPythonModule(pyodide, name, source);
+  return installPythonModule(pyodide, "reify_instrument", INSTRUMENTER);
+};
+
 const internalFailure = (message: string): CompileResult => ({
   ok: false,
   diagnostics: [{ severity: "error", code: "internal", message, range: null }],
@@ -44,9 +55,7 @@ export class PythonCompiler implements LanguageCompiler {
 
   /** Installs the instrumenter into a loaded Pyodide (passed in, so tests can use Node's). */
   static create(languageId: string, pyodide: PyodideAPI): PythonCompiler {
-    installReifyProtocol(pyodide);
-    for (const [name, source] of SUPPORT_MODULES) installPythonModule(pyodide, name, source);
-    const instrumenter = installPythonModule(pyodide, "reify_instrument", INSTRUMENTER);
+    const instrumenter = installInstrumenter(pyodide);
     const compileJson = instrumenter.compile_json as (source: string) => string;
     return new PythonCompiler(languageId, compileJson);
   }

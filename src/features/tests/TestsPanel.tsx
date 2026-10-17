@@ -22,6 +22,8 @@ interface TestsPanelProps {
   readonly functionNames: readonly string[];
   readonly results: readonly TestResult[];
   readonly running: boolean;
+  /** When set, running is unavailable and this says why. */
+  readonly blockedReason?: string | null;
   readonly onChange: (suite: TestSuite) => void;
   readonly onRun: () => void;
   readonly onTrace: (testCase: TestCase) => void;
@@ -163,6 +165,7 @@ export function TestsPanel({
   functionNames,
   results,
   running,
+  blockedReason,
   onChange,
   onRun,
   onTrace,
@@ -324,7 +327,8 @@ export function TestsPanel({
         <Button
           variant="primary"
           onClick={onRun}
-          disabled={running || suite.cases.length === 0 || !suite.entry}
+          disabled={running || suite.cases.length === 0 || !suite.entry || Boolean(blockedReason)}
+          title={blockedReason ?? undefined}
         >
           <Play size={13} fill="currentColor" /> Run tests
         </Button>

@@ -3,10 +3,14 @@ import type { TraceEvent } from "../protocol/events";
 import {
   parseCompilerMessage,
   parseRuntimeMessage,
+  parseServiceResponse,
   type CompileRequest,
   type CompileResponse,
   type RuntimeRequest,
   type RuntimeWorkerMessage,
+  type ServiceCall,
+  type ServiceRequest,
+  type ServiceResponse,
   type WarmRequest,
 } from "../protocol/messages";
 import {
@@ -116,6 +120,8 @@ interface SpareRuntime {
  */
 export class ExecutionCoordinator {
   private compiler: WorkerLike | null = null;
+  private readonly serviceCalls = new Map<number, (result: ServiceResponse["result"]) => void>();
+  private nextServiceId = 1;
   private spareRuntime: SpareRuntime | null = null;
   private active: ActiveRun | null = null;
 
@@ -139,6 +145,22 @@ export class ExecutionCoordinator {
     }
     this.spareRuntime ??= this.spawnRuntime(languageId);
   }
+
+  /**
+   * Asks a language service that lives in the compiler worker (so the language runtime is
+   * loaded once). Resolves `null` if the worker has no such service, fails, or is replaced.
+   */
+  serviceCall = (
+    languageId: string,
+    source: string,
+    call: ServiceCall,
+  ): Promise<ServiceResponse["result"]> =>
+    new Promise((resolve) => {
+      const id = this.nextServiceId++;
+      this.serviceCalls.set(id, resolve);
+      const request: ServiceRequest = { type: "service", id, languageId, source, call };
+      this.ensureCompiler().postMessage(request);
+    });
 
   start(request: RunRequest, callbacks: RunCallbacks): RunHandle {
     if (this.active) this.stop(this.active);
@@ -176,8 +198,7 @@ export class ExecutionCoordinator {
   /** Terminates every worker. The coordinator can still be used afterwards. */
   dispose(): void {
     if (this.active) this.stop(this.active);
-    this.compiler?.terminate();
-    this.compiler = null;
+    this.dropCompiler();
     this.spareRuntime?.worker.terminate();
     this.spareRuntime = null;
   }
@@ -196,8 +217,7 @@ export class ExecutionCoordinator {
     const worker = this.workers.compiler();
     worker.onmessage = (event) => this.onCompilerMessage(event.data);
     worker.onerror = (event) => {
-      this.compiler?.terminate();
-      this.compiler = null;
+      this.dropCompiler();
       const run = this.active;
       if (run?.phase === "compiling")
         this.fail(run, `Compiler worker failed: ${event.message ?? "unknown error"}`);
@@ -206,7 +226,21 @@ export class ExecutionCoordinator {
     return worker;
   }
 
+  /** Terminates the compiler worker; questions it was answering get `null`. */
+  private dropCompiler(): void {
+    this.compiler?.terminate();
+    this.compiler = null;
+    for (const resolve of this.serviceCalls.values()) resolve(null);
+    this.serviceCalls.clear();
+  }
+
   private onCompilerMessage(data: unknown): void {
+    const response = parseServiceResponse(data);
+    if (response) {
+      this.serviceCalls.get(response.id)?.(response.result);
+      this.serviceCalls.delete(response.id);
+      return;
+    }
     const message = parseCompilerMessage(data);
     const run = this.active;
     if (!message || !run || message.runId !== run.request.runId || run.phase !== "compiling")
@@ -352,8 +386,7 @@ export class ExecutionCoordinator {
     if (this.active !== run) return;
     if (run.phase === "compiling") {
       // A stuck compiler is replaced; the next run gets a fresh one.
-      this.compiler?.terminate();
-      this.compiler = null;
+      this.dropCompiler();
       this.fail(
         run,
         run.compilerReady

@@ -34,6 +34,8 @@ export interface ExecutionSession {
   readonly actor: ExecutionActor;
   /** Starts workers for the next run in `languageId` (stable across renders). */
   readonly prewarm: (languageId: string) => void;
+  /** Asks a language service in the compiler worker (stable across renders). */
+  readonly serviceCall: ExecutionCoordinator["serviceCall"];
 }
 
 /**
@@ -55,7 +57,12 @@ export function useExecutionSession(): ExecutionSession {
 
   useEffect(() => () => services.coordinator.dispose(), [services]);
 
-  return { store: services.store, actor, prewarm: services.prewarm };
+  return {
+    store: services.store,
+    actor,
+    prewarm: services.prewarm,
+    serviceCall: services.coordinator.serviceCall,
+  };
 }
 
 export function useTraceSnapshot(store: TraceStore): TraceSnapshot {

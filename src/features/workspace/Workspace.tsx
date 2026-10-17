@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { createPortal } from "react-dom";
-import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { posthog } from "posthog-js";
 import {
   Group,
@@ -27,7 +27,7 @@ import {
   usePanelRef,
   type PanelImperativeHandle,
 } from "react-resizable-panels";
-import { Menu, type MenuItem } from "@/components/Menu";
+import { ContextMenu, Menu, type MenuItem } from "@/components/Menu";
 import { SiteHeader } from "@/components/SiteHeader";
 import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { findExample } from "@/content/examples";
@@ -38,6 +38,7 @@ import { BreakpointsPanel } from "@/features/breakpoints/BreakpointsPanel";
 import { ComplexityPanel } from "@/features/complexity/ComplexityPanel";
 import { ConsolePanel } from "@/features/console/ConsolePanel";
 import { CodeEditor, type EditorDiagnostic } from "@/features/editor/CodeEditor";
+import { languageServiceFor } from "@/features/editor/languageServices";
 import type { ExecutionMark } from "@/features/editor/executionLine";
 import { ExecutionFlow } from "@/features/flow/ExecutionFlow";
 import { Inspector } from "@/features/inspector/Inspector";
@@ -56,6 +57,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { oneOf, usePreference } from "@/hooks/usePreference";
 import type { ExecutionStatus } from "@/machine/executionMachine";
 import {
+  BLANK_DOC,
   canSwitchLanguage,
   docKey,
   loadWorkspace,
@@ -65,6 +67,7 @@ import {
   resolveDoc,
   saveWorkspace,
   workspaceReducer,
+  type CloseScope,
   type DocRef,
   type WorkspaceAction,
 } from "./files";
@@ -134,7 +137,7 @@ const isEditable = (target: EventTarget | null): boolean =>
   Boolean(target.closest("input, textarea, select, [contenteditable='true'], .cm-editor"));
 
 export default function Workspace() {
-  const { store, actor, prewarm } = useExecutionSession();
+  const { store, actor, prewarm, serviceCall } = useExecutionSession();
   const trace = useTraceSnapshot(store);
   const status = useExecutionStatus(actor);
   const context = useExecutionContext(actor);
@@ -147,7 +150,9 @@ export default function Workspace() {
       ? workspaceReducer(loaded, { type: "open", ref: { kind: "example", id: launch.example } })
       : loaded;
   });
-  const doc = resolveDoc(workspace, workspace.active)!;
+  // With every tab closed there is no document; a blank stand-in keeps the views below simple.
+  const empty = workspace.active === null;
+  const doc = resolveDoc(workspace, workspace.active) ?? BLANK_DOC;
   const switchable = doc.ref.kind === "file" && canSwitchLanguage(doc);
   const breakpoints = workspace.breakpoints[doc.key] ?? [];
 
@@ -192,6 +197,7 @@ export default function Workspace() {
     () => detectFunctionNames(doc.source, languageId),
     [doc.source, languageId],
   );
+  const [errorCount, setErrorCount] = useState(0);
   // Keep a runtime for the open document's language loading before the user presses Run.
   useEffect(() => prewarm(languageId), [prewarm, languageId]);
 
@@ -263,7 +269,42 @@ export default function Workspace() {
     return () => cancelAnimationFrame(frame);
   }, [doc.key, workspace.tabs.length]);
 
+  /** Why Run is unavailable: editor errors (syntax, types) stop a run like syntax errors do. */
+  const runBlockedReason =
+    errorCount === 0 ? null : `Fix ${errorCount} ${errorCount === 1 ? "error" : "errors"} to run`;
+  const blockedByTypes = (): boolean => {
+    if (runBlockedReason) notify(runBlockedReason, undefined, "danger");
+    return runBlockedReason !== null;
+  };
+
+  /** The tab a right click opened the tab menu on, and where. */
+  const [tabMenu, setTabMenu] = useState<{ ref: DocRef; x: number; y: number } | null>(null);
+  const closeTabMenu = useCallback(() => setTabMenu(null), []);
+  /** Closes one tab, or (with a scope) the tabs around it, saving the open edit first. */
+  const closeTab = (ref: DocRef, scope?: CloseScope) => {
+    flushEdit();
+    dispatch(scope ? { type: "closeTabs", scope, ref } : { type: "close", ref });
+  };
+  const tabMenuItems = (ref: DocRef): MenuItem[] => {
+    const index = workspace.tabs.findIndex((tab) => docKey(tab) === docKey(ref));
+    const only = workspace.tabs.length === 1;
+    return [
+      {
+        label: "Close",
+        onSelect: () => closeTab(ref),
+      },
+      { label: "Close others", disabled: only, onSelect: () => closeTab(ref, "others") },
+      {
+        label: "Close to the right",
+        disabled: index < 0 || index === workspace.tabs.length - 1,
+        onSelect: () => closeTab(ref, "right"),
+      },
+      { label: "Close all", onSelect: () => closeTab(ref, "all") },
+    ];
+  };
+
   const run = () => {
+    if (empty || blockedByTypes()) return;
     flushEdit();
     setTracedSource(source.current);
     capture("code_run_started", {
@@ -277,6 +318,7 @@ export default function Workspace() {
     actor.send({ type: "RUN", source: source.current, languageId });
   };
   const runTests = () => {
+    if (empty || blockedByTypes()) return;
     flushEdit();
     setDrawerTab("tests");
     if (!drawerOpen) toggleDrawer();
@@ -291,6 +333,7 @@ export default function Workspace() {
     actor.send({ type: "RUN", source: source.current, languageId, suite });
   };
   const traceCase = (testCase: TestCase) => {
+    if (empty || blockedByTypes()) return;
     setTracedSource(source.current);
     capture("test_case_trace_started", { language: languageId });
     actor.send({
@@ -420,15 +463,20 @@ export default function Workspace() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  const sourceChanged =
+    trace.status !== "empty" && tracedSource !== null && doc.source !== tracedSource;
   const editorLines = doc.source.split("\n").length;
+  // Marked while running or once stepping has moved off the first step; a finished run resting
+  // at its start (or code edited since) leaves the editor unmarked.
+  const marked = busy || (trace.position > 0 && !sourceChanged);
   const execution = useMemo<ExecutionMark | null>(() => {
-    if (!view?.loc || view.loc.line > editorLines) return null;
+    if (!marked || !view?.loc || view.loc.line > editorLines) return null;
     return {
       line: view.loc.line,
       endLine: view.loc.role === "call" ? view.loc.line : view.loc.endLine,
       kind: view.kind === "call" ? "call" : "statement",
     };
-  }, [view, editorLines]);
+  }, [marked, view, editorLines]);
 
   const diagnostics = useMemo<EditorDiagnostic[]>(() => {
     const fromCompile: readonly Diagnostic[] =
@@ -448,8 +496,6 @@ export default function Workspace() {
     return [...fromCompile, ...warnings, ...thrown];
   }, [context.failure, trace.program, trace.outcome, editorLines]);
 
-  const sourceChanged =
-    trace.status !== "empty" && tracedSource !== null && doc.source !== tracedSource;
   const banner = bannerFor(
     context.failure,
     testMode ? null : trace.outcome,
@@ -488,6 +534,8 @@ export default function Workspace() {
           breakpoints={breakpoints}
           onToggleBreakpoint={(line) => dispatch({ type: "toggleBreakpoint", line })}
           onChange={onChange}
+          serviceFor={(id) => languageServiceFor(id, serviceCall)}
+          onServiceErrors={setErrorCount}
           maxLength={MAX_FILE_CHARS}
           onLimit={() =>
             notify(
@@ -614,7 +662,9 @@ export default function Workspace() {
                 <button
                   type="button"
                   onClick={run}
-                  className="press mx-auto mt-5 flex h-10 items-center gap-2 rounded-xl bg-ink px-4 text-[13px] font-medium text-bg"
+                  disabled={runBlockedReason !== null}
+                  title={runBlockedReason ?? undefined}
+                  className="press disabled:opacity-40 mx-auto mt-5 flex h-10 items-center gap-2 rounded-xl bg-ink px-4 text-[13px] font-medium text-bg"
                 >
                   <Play size={13} fill="currentColor" /> Run
                 </button>
@@ -832,6 +882,7 @@ export default function Workspace() {
                 functionNames={functionNames}
                 results={context.testResults}
                 running={busy}
+                blockedReason={runBlockedReason}
                 onChange={changeSuite}
                 onRun={runTests}
                 onTrace={traceCase}
@@ -924,6 +975,10 @@ export default function Workspace() {
                     <motion.div
                       key={docKey(ref)}
                       layout
+                      onContextMenu={(event: React.MouseEvent) => {
+                        event.preventDefault();
+                        setTabMenu({ ref, x: event.clientX, y: event.clientY });
+                      }}
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.95 }}
@@ -948,15 +1003,8 @@ export default function Workspace() {
                       <button
                         type="button"
                         aria-label={`Close ${tab.name}`}
-                        onClick={() => {
-                          flushEdit();
-                          dispatch({ type: "close", ref });
-                        }}
-                        className={`grid size-5 place-items-center rounded text-faint transition-opacity hover:bg-surface-3 hover:text-ink ${
-                          workspace.tabs.length > 1
-                            ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                            : "hidden"
-                        }`}
+                        onClick={() => closeTab(ref)}
+                        className="grid size-5 place-items-center rounded text-faint opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-3 hover:text-ink focus-visible:opacity-100"
                       >
                         <X size={12} />
                       </button>
@@ -964,6 +1012,12 @@ export default function Workspace() {
                   );
                 })}
               </AnimatePresence>
+              <ContextMenu
+                at={tabMenu}
+                items={tabMenu ? tabMenuItems(tabMenu.ref) : []}
+                label="Tab actions"
+                onClose={closeTabMenu}
+              />
               <button
                 type="button"
                 aria-label="New file"
@@ -977,35 +1031,39 @@ export default function Workspace() {
               </button>
             </div>
 
-            <div
-              role="radiogroup"
-              aria-label="View mode"
-              className="mx-auto flex rounded-xl p-1 edge"
-            >
-              {VIEW_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  role="radio"
-                  aria-checked={viewMode === mode}
-                  onClick={() => setViewMode(mode)}
-                  className={`relative h-8 rounded-lg px-5 text-[13px] font-medium capitalize transition-colors ${
-                    viewMode === mode ? "text-accent" : "text-muted hover:text-ink"
-                  }`}
-                >
-                  {viewMode === mode && (
-                    <motion.span
-                      layoutId="view-mode"
-                      className="absolute inset-0 rounded-lg bg-surface shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]"
-                      transition={{ type: "spring", duration: 0.3, bounce: 0.12 }}
-                    />
-                  )}
-                  <span className="relative">{mode}</span>
-                </button>
-              ))}
-            </div>
+            {empty ? (
+              <div className="mx-auto" />
+            ) : (
+              <div
+                role="radiogroup"
+                aria-label="View mode"
+                className="mx-auto flex rounded-xl p-1 edge"
+              >
+                {VIEW_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={viewMode === mode}
+                    onClick={() => setViewMode(mode)}
+                    className={`relative h-8 rounded-lg px-5 text-[13px] font-medium capitalize transition-colors ${
+                      viewMode === mode ? "text-accent" : "text-muted hover:text-ink"
+                    }`}
+                  >
+                    {viewMode === mode && (
+                      <motion.span
+                        layoutId="view-mode"
+                        className="absolute inset-0 rounded-lg bg-surface shadow-[0_0_0_1px_var(--border),0_1px_2px_rgb(0_0_0/0.06)]"
+                        transition={{ type: "spring", duration: 0.3, bounce: 0.12 }}
+                      />
+                    )}
+                    <span className="relative">{mode}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {hasInspector && (
+            {hasInspector && !empty && (
               <button
                 type="button"
                 aria-pressed={inspectorOpen}
@@ -1020,187 +1078,213 @@ export default function Workspace() {
               </button>
             )}
 
-            <Menu
-              label="Language"
-              align="end"
-              trigger={
-                <button type="button" className={`${outlineButton} w-44 justify-between`}>
-                  {languageById(languageId).label}
-                  <ChevronDown size={15} className="text-muted" />
-                </button>
-              }
-              items={LANGUAGES.map((language) => ({
-                label: language.label,
-                icon: (
-                  <span
-                    className={`rounded px-1 text-[10px] font-bold ${LANGUAGE_BADGE_CLASS[language.id]}`}
-                  >
-                    {language.badge}
-                  </span>
-                ),
-                hint: language.id === languageId ? "✓" : undefined,
-                // Examples keep their language, and a file with code keeps the language its
-                // code is written in: switching renames the file, it never translates code.
-                disabled: language.id !== languageId && !switchable,
-                onSelect: () => {
-                  dispatch({ type: "language", languageId: language.id });
-                  // The editor holds its own text: reload it with the rewritten starter.
-                  setGeneration((g) => g + 1);
-                  capture("language_changed", { language: language.id });
-                },
-              }))}
-            />
+            {!empty && (
+              <>
+                <Menu
+                  label="Language"
+                  align="end"
+                  trigger={
+                    <button type="button" className={`${outlineButton} w-44 justify-between`}>
+                      {languageById(languageId).label}
+                      <ChevronDown size={15} className="text-muted" />
+                    </button>
+                  }
+                  items={LANGUAGES.map((language) => ({
+                    label: language.label,
+                    icon: (
+                      <span
+                        className={`rounded px-1 text-[10px] font-bold ${LANGUAGE_BADGE_CLASS[language.id]}`}
+                      >
+                        {language.badge}
+                      </span>
+                    ),
+                    hint: language.id === languageId ? "✓" : undefined,
+                    // Examples keep their language, and a file with code keeps the language its
+                    // code is written in: switching renames the file, it never translates code.
+                    disabled: language.id !== languageId && !switchable,
+                    onSelect: () => {
+                      dispatch({ type: "language", languageId: language.id });
+                      // The editor holds its own text: reload it with the rewritten starter.
+                      setGeneration((g) => g + 1);
+                      capture("language_changed", { language: language.id });
+                    },
+                  }))}
+                />
 
-            <div className="flex h-10 items-stretch rounded-xl bg-ink text-bg">
-              <AnimatePresence mode="popLayout" initial={false}>
-                <motion.button
-                  key={busy ? "stop" : "run"}
-                  type="button"
-                  onClick={busy ? cancel : run}
-                  disabled={status === "cancelling"}
-                  {...SWAP_Y}
-                  transition={easeOut(0.15)}
-                  whileTap={{ scale: 0.97 }}
-                  title={busy ? "Stop (Esc)" : "Run (Ctrl+Enter)"}
-                  className="flex items-center gap-2 px-4 text-[13px] font-medium"
-                >
-                  {busy ? (
-                    <Square size={12} fill="currentColor" />
-                  ) : (
-                    <Play size={13} fill="currentColor" />
-                  )}
-                  {busy ? "Stop" : "Run"}
-                </motion.button>
-              </AnimatePresence>
-              <span className="my-2 w-px bg-bg/20" />
-              <Menu
-                label="Run options"
-                align="end"
-                trigger={
-                  <button
-                    type="button"
-                    aria-label="Run options"
-                    className="grid h-full w-9 place-items-center rounded-r-xl hover:bg-bg/10"
-                  >
-                    <ChevronDown size={15} />
-                  </button>
-                }
-                items={[
-                  {
-                    label: "Run",
-                    hint: "Ctrl ↵",
-                    icon: <Play size={13} />,
-                    disabled: busy,
-                    onSelect: run,
-                  },
-                  {
-                    label: "Run tests",
-                    hint: "Ctrl ⇧ ↵",
-                    disabled: busy || suite.cases.length === 0,
-                    onSelect: runTests,
-                  },
-                  "separator",
-                  {
-                    label: "Reset trace",
-                    icon: <RotateCcw size={13} />,
-                    disabled: status === "idle",
-                    onSelect: () => actor.send({ type: "RESET" }),
-                  },
-                ]}
-              />
-            </div>
+                <div className="flex h-10 items-stretch rounded-xl bg-ink text-bg">
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    <motion.button
+                      key={busy ? "stop" : "run"}
+                      type="button"
+                      onClick={busy ? cancel : run}
+                      disabled={status === "cancelling" || (!busy && runBlockedReason !== null)}
+                      {...SWAP_Y}
+                      transition={easeOut(0.15)}
+                      whileTap={{ scale: 0.97 }}
+                      title={busy ? "Stop (Esc)" : (runBlockedReason ?? "Run (Ctrl+Enter)")}
+                      className="flex items-center gap-2 px-4 text-[13px] font-medium disabled:opacity-50"
+                    >
+                      {busy ? (
+                        <Square size={12} fill="currentColor" />
+                      ) : (
+                        <Play size={13} fill="currentColor" />
+                      )}
+                      {busy ? "Stop" : "Run"}
+                    </motion.button>
+                  </AnimatePresence>
+                  <span className="my-2 w-px bg-bg/20" />
+                  <Menu
+                    label="Run options"
+                    align="end"
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label="Run options"
+                        className="grid h-full w-9 place-items-center rounded-r-xl hover:bg-bg/10"
+                      >
+                        <ChevronDown size={15} />
+                      </button>
+                    }
+                    items={[
+                      {
+                        label: "Run",
+                        hint: "Ctrl ↵",
+                        icon: <Play size={13} />,
+                        disabled: busy || runBlockedReason !== null,
+                        onSelect: run,
+                      },
+                      {
+                        label: "Run tests",
+                        hint: "Ctrl ⇧ ↵",
+                        disabled: busy || suite.cases.length === 0 || runBlockedReason !== null,
+                        onSelect: runTests,
+                      },
+                      "separator",
+                      {
+                        label: "Reset trace",
+                        icon: <RotateCcw size={13} />,
+                        disabled: status === "idle",
+                        onSelect: () => actor.send({ type: "RESET" }),
+                      },
+                    ]}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <RunBanner message={storageNotice ?? notice} />
-          <Group orientation="vertical" className="min-h-0 flex-1" data-animating={animating}>
-            <Panel id="main" minSize="35">
-              <div className="flex h-full min-h-0 flex-col gap-3">
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.div
-                    key={`${viewMode}-${wide}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.16 }}
-                    className="min-h-0 flex-1"
-                  >
-                    <Group
-                      orientation={wide ? "horizontal" : "vertical"}
-                      className="h-full"
-                      data-animating={animating}
-                    >
-                      {panes[viewMode].map((pane, index) => {
-                        const isInspector = pane.id === "inspector";
-                        const hidden = isInspector && !inspectorOpen;
-                        return (
-                          <Fragment key={pane.id}>
-                            {index > 0 && (
-                              <Separator
-                                className={`transition-[width,height] duration-300 ${
-                                  hidden
-                                    ? `pointer-events-none ${wide ? "w-0" : "h-0"}`
-                                    : wide
-                                      ? "w-3"
-                                      : "h-3"
-                                }`}
-                              />
-                            )}
-                            <Panel
-                              id={pane.id}
-                              panelRef={isInspector ? inspectorPanel : undefined}
-                              defaultSize={startSize(pane)}
-                              minSize={pane.min}
-                              collapsible={isInspector}
-                              collapsedSize={0}
-                              onResize={
-                                isInspector
-                                  ? () => {
-                                      if (toggling.current) return;
-                                      setInspectorOpen(
-                                        !(inspectorPanel.current?.isCollapsed() ?? false),
-                                      );
-                                    }
-                                  : undefined
-                              }
-                            >
-                              {isInspector ? (
-                                <div className="h-full" inert={hidden}>
-                                  {pane.node}
-                                </div>
-                              ) : (
-                                pane.node
-                              )}
-                            </Panel>
-                          </Fragment>
-                        );
-                      })}
-                    </Group>
-                  </motion.div>
-                </AnimatePresence>
-                <div className={`shrink-0 ${card}`}>
-                  <Timeline
-                    store={store}
-                    position={trace.position}
-                    total={trace.totalSteps}
-                    breakpoints={breakpoints}
-                    onShowShortcuts={() => setShortcutsOpen(true)}
-                  />
-                </div>
-              </div>
-            </Panel>
-            <Separator className="h-3" />
-            <Panel
-              id="drawer"
-              panelRef={drawerPanel}
-              defaultSize="26"
-              minSize={140}
-              collapsible
-              collapsedSize={DRAWER_BAR_PX}
-              onResize={() => setDrawerOpen(!(drawerPanel.current?.isCollapsed() ?? false))}
+          {empty ? (
+            <div
+              className={`flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center ${card}`}
             >
-              {drawer}
-            </Panel>
-          </Group>
+              <div>
+                <p className="text-[15px] font-medium text-ink">No file open</p>
+                <p className="mt-1 text-[13px] text-muted">
+                  Pick a file from the sidebar, or start a new one.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => addFile({ type: "create", id: newFileId() })}
+                className="press flex h-10 items-center gap-2 rounded-xl bg-ink px-4 text-[13px] font-medium text-bg"
+              >
+                <Plus size={14} /> New file
+              </button>
+            </div>
+          ) : (
+            <>
+              <Group orientation="vertical" className="min-h-0 flex-1" data-animating={animating}>
+                <Panel id="main" minSize="35">
+                  <div className="flex h-full min-h-0 flex-col gap-3">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={`${viewMode}-${wide}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.16 }}
+                        className="min-h-0 flex-1"
+                      >
+                        <Group
+                          orientation={wide ? "horizontal" : "vertical"}
+                          className="h-full"
+                          data-animating={animating}
+                        >
+                          {panes[viewMode].map((pane, index) => {
+                            const isInspector = pane.id === "inspector";
+                            const hidden = isInspector && !inspectorOpen;
+                            return (
+                              <Fragment key={pane.id}>
+                                {index > 0 && (
+                                  <Separator
+                                    className={`transition-[width,height] duration-300 ${
+                                      hidden
+                                        ? `pointer-events-none ${wide ? "w-0" : "h-0"}`
+                                        : wide
+                                          ? "w-3"
+                                          : "h-3"
+                                    }`}
+                                  />
+                                )}
+                                <Panel
+                                  id={pane.id}
+                                  panelRef={isInspector ? inspectorPanel : undefined}
+                                  defaultSize={startSize(pane)}
+                                  minSize={pane.min}
+                                  collapsible={isInspector}
+                                  collapsedSize={0}
+                                  onResize={
+                                    isInspector
+                                      ? () => {
+                                          if (toggling.current) return;
+                                          setInspectorOpen(
+                                            !(inspectorPanel.current?.isCollapsed() ?? false),
+                                          );
+                                        }
+                                      : undefined
+                                  }
+                                >
+                                  {isInspector ? (
+                                    <div className="h-full" inert={hidden}>
+                                      {pane.node}
+                                    </div>
+                                  ) : (
+                                    pane.node
+                                  )}
+                                </Panel>
+                              </Fragment>
+                            );
+                          })}
+                        </Group>
+                      </motion.div>
+                    </AnimatePresence>
+                    <div className={`shrink-0 ${card}`}>
+                      <Timeline
+                        store={store}
+                        position={trace.position}
+                        total={trace.totalSteps}
+                        breakpoints={breakpoints}
+                        onShowShortcuts={() => setShortcutsOpen(true)}
+                      />
+                    </div>
+                  </div>
+                </Panel>
+                <Separator className="h-3" />
+                <Panel
+                  id="drawer"
+                  panelRef={drawerPanel}
+                  defaultSize="26"
+                  minSize={140}
+                  collapsible
+                  collapsedSize={DRAWER_BAR_PX}
+                  onResize={() => setDrawerOpen(!(drawerPanel.current?.isCollapsed() ?? false))}
+                >
+                  {drawer}
+                </Panel>
+              </Group>
+            </>
+          )}
         </main>
       </div>
       {createPortal(

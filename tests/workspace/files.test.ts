@@ -14,6 +14,17 @@ import {
 } from "@/features/workspace/files";
 
 const start = (): WorkspaceState => initialWorkspace();
+const file = (id: string) => ({ kind: "file", id }) as const;
+const ids = (state: WorkspaceState) => state.tabs.map((tab) => tab.id);
+
+/** Tabs: array-map, index, utils, example-ts (in that order); `active` is the open one. */
+const withTabs = (active: string): WorkspaceState => {
+  let state = start();
+  for (const id of ["index", "utils", "example-ts"]) {
+    state = workspaceReducer(state, { type: "open", ref: file(id) });
+  }
+  return workspaceReducer(state, { type: "open", ref: file(active) });
+};
 
 describe("workspace files", () => {
   it("opens an example by default and resolves its source", () => {
@@ -55,12 +66,86 @@ describe("workspace files", () => {
     expect(state.tabs.every((tab) => resolveDoc(state, tab) !== null)).toBe(true);
   });
 
+  describe("closing several tabs", () => {
+    it("closes the tabs to the right and keeps the active one when it stays", () => {
+      const state = workspaceReducer(withTabs("index"), {
+        type: "closeTabs",
+        scope: "right",
+        ref: file("utils"),
+      });
+      expect(ids(state)).toEqual(["array-map", "index", "utils"]);
+      expect(state.active).toEqual(file("index"));
+    });
+
+    it("moves the active tab to the one the menu was opened on when it is closed", () => {
+      const state = workspaceReducer(withTabs("example-ts"), {
+        type: "closeTabs",
+        scope: "right",
+        ref: file("index"),
+      });
+      expect(ids(state)).toEqual(["array-map", "index"]);
+      expect(state.active).toEqual(file("index"));
+    });
+
+    it("closes every other tab", () => {
+      const state = workspaceReducer(withTabs("example-ts"), {
+        type: "closeTabs",
+        scope: "others",
+        ref: file("utils"),
+      });
+      expect(ids(state)).toEqual(["utils"]);
+      expect(state.active).toEqual(file("utils"));
+    });
+
+    it("closes everything, leaving no document open and the files in place", () => {
+      const before = withTabs("utils");
+      const state = workspaceReducer(before, {
+        type: "closeTabs",
+        scope: "all",
+        ref: file("utils"),
+      });
+      expect(state.tabs).toEqual([]);
+      expect(state.active).toBeNull();
+      expect(state.files).toBe(before.files);
+    });
+
+    it("ignores edits and breakpoints while nothing is open, and opens a file again", () => {
+      let state = workspaceReducer(withTabs("utils"), {
+        type: "closeTabs",
+        scope: "all",
+        ref: file("utils"),
+      });
+      expect(workspaceReducer(state, { type: "edit", source: "x" })).toBe(state);
+      expect(workspaceReducer(state, { type: "toggleBreakpoint", line: 1 })).toBe(state);
+      state = workspaceReducer(state, { type: "open", ref: file("utils") });
+      expect(state.tabs).toEqual([file("utils")]);
+      expect(state.active).toEqual(file("utils"));
+    });
+
+    it("closing the last tab, or deleting its file, also leaves nothing open", () => {
+      const only = workspaceReducer(start(), { type: "close", ref: start().active! });
+      expect(only.active).toBeNull();
+      const deleted = workspaceReducer(
+        workspaceReducer(start(), { type: "close", ref: start().active! }),
+        { type: "open", ref: file("utils") },
+      );
+      expect(workspaceReducer(deleted, { type: "delete", id: "utils" }).active).toBeNull();
+    });
+
+    it("ignores a tab that is not open", () => {
+      const before = withTabs("index");
+      expect(workspaceReducer(before, { type: "closeTabs", scope: "all", ref: file("nope") })).toBe(
+        before,
+      );
+    });
+  });
+
   it("toggles breakpoints per document, sorted", () => {
     let state = workspaceReducer(start(), { type: "toggleBreakpoint", line: 4 });
     state = workspaceReducer(state, { type: "toggleBreakpoint", line: 2 });
-    expect(state.breakpoints[docKey(state.active)]).toEqual([2, 4]);
+    expect(state.breakpoints[docKey(state.active!)]).toEqual([2, 4]);
     state = workspaceReducer(state, { type: "toggleBreakpoint", line: 4 });
-    expect(state.breakpoints[docKey(state.active)]).toEqual([2]);
+    expect(state.breakpoints[docKey(state.active!)]).toEqual([2]);
   });
 
   it("uniqueName suffixes before the extension", () => {

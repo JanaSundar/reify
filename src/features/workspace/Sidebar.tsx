@@ -14,17 +14,17 @@ import {
   Trash2,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { forwardRef, useState } from "react";
+import { forwardRef, useCallback, useState } from "react";
 import { InlineConfirm } from "@/components/InlineConfirm";
-import { Menu, type MenuItem } from "@/components/Menu";
-import { EXAMPLES } from "@/content/examples";
+import { ContextMenu, Menu, type MenuItem } from "@/components/Menu";
+import { EXAMPLES, type Example } from "@/content/examples";
 import { LANGUAGES } from "@/engine/languages/catalog";
 import type { DocRef, WorkspaceFile } from "./files";
 import { easeOut } from "@/components/motion";
 
 interface SidebarProps {
   readonly files: readonly WorkspaceFile[];
-  readonly active: DocRef;
+  readonly active: DocRef | null;
   readonly onOpen: (ref: DocRef) => void;
   readonly onNewFile: (name?: string, source?: string) => void;
   readonly onRename: (id: string, name: string) => void;
@@ -38,12 +38,14 @@ function ItemButton({
   icon,
   label,
   onClick,
+  onContextMenu,
   index,
 }: {
   active: boolean;
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
   index: number;
 }) {
   return (
@@ -53,6 +55,7 @@ function ItemButton({
       animate={{ opacity: 1, x: 0 }}
       transition={easeOut(0.25, index * 0.03)}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       aria-current={active ? "page" : undefined}
       className={`relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13.5px] transition-colors ${
         active ? "text-ink" : "text-text hover:bg-surface-2"
@@ -71,11 +74,38 @@ function ItemButton({
   );
 }
 
+type FileMode = "rename" | "delete";
+
+/** What a file's actions do; shared by its row menu and its right-click menu. */
+const fileMenuItems = ({
+  onMode,
+  onDuplicate,
+  onOpen,
+}: {
+  onMode: (mode: FileMode) => void;
+  onDuplicate: () => void;
+  onOpen?: () => void;
+}): MenuItem[] => [
+  ...(onOpen ? [{ label: "Open", icon: <FileCode2 size={14} />, onSelect: onOpen }] : []),
+  { label: "Rename", icon: <PencilLine size={14} />, onSelect: () => onMode("rename") },
+  { label: "Duplicate", icon: <Copy size={14} />, onSelect: onDuplicate },
+  { label: "Delete", icon: <Trash2 size={14} />, danger: true, onSelect: () => onMode("delete") },
+];
+
+/** What a right click landed on. */
+type ContextTarget =
+  | { readonly kind: "file"; readonly file: WorkspaceFile }
+  | { readonly kind: "example"; readonly example: Example }
+  | { readonly kind: "background" };
+
 function FileRow({
   file,
   active,
   index,
+  mode,
+  onMode,
   onOpen,
+  onContextMenu,
   onRename,
   onDuplicate,
   onDelete,
@@ -83,13 +113,17 @@ function FileRow({
   file: WorkspaceFile;
   active: boolean;
   index: number;
+  /** Whether the row is being renamed or asking to confirm a delete (owned by the sidebar). */
+  mode: FileMode | null;
+  onMode: (mode: FileMode | null) => void;
   onOpen: () => void;
+  onContextMenu: (event: React.MouseEvent) => void;
   onRename: (name: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const [renaming, setRenaming] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const renaming = mode === "rename";
+  const confirmingDelete = mode === "delete";
   if (confirmingDelete) {
     return (
       <div className="px-1 py-0.5">
@@ -97,10 +131,10 @@ function FileRow({
           message={`Delete ${file.name}? This can't be undone.`}
           confirmLabel="Delete"
           onConfirm={() => {
-            setConfirmingDelete(false);
+            onMode(null);
             onDelete();
           }}
-          onCancel={() => setConfirmingDelete(false)}
+          onCancel={() => onMode(null)}
         />
       </div>
     );
@@ -113,7 +147,7 @@ function FileRow({
           event.preventDefault();
           const input = event.currentTarget.elements.namedItem("name") as HTMLInputElement;
           onRename(input.value);
-          setRenaming(false);
+          onMode(null);
         }}
       >
         <input
@@ -124,24 +158,15 @@ function FileRow({
           onFocus={(event) => event.currentTarget.setSelectionRange(0, file.name.lastIndexOf("."))}
           onBlur={(event) => {
             onRename(event.currentTarget.value);
-            setRenaming(false);
+            onMode(null);
           }}
-          onKeyDown={(event) => event.key === "Escape" && setRenaming(false)}
+          onKeyDown={(event) => event.key === "Escape" && onMode(null)}
           className="h-8 w-full rounded-lg bg-surface px-2.5 font-mono text-[13px] text-ink edge-accent outline-none"
         />
       </form>
     );
   }
-  const actions: MenuItem[] = [
-    { label: "Rename", icon: <PencilLine size={14} />, onSelect: () => setRenaming(true) },
-    { label: "Duplicate", icon: <Copy size={14} />, onSelect: onDuplicate },
-    {
-      label: "Delete",
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onSelect: () => setConfirmingDelete(true),
-    },
-  ];
+  const actions = fileMenuItems({ onMode, onDuplicate });
   return (
     <div className="group relative flex items-center">
       <ItemButton
@@ -150,6 +175,7 @@ function FileRow({
         icon={<FileCode2 size={16} strokeWidth={1.7} />}
         label={file.name}
         onClick={onOpen}
+        onContextMenu={onContextMenu}
       />
       <div className="absolute right-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
         <Menu
@@ -178,9 +204,24 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
 ) {
   const [query, setQuery] = useState("");
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; mode: FileMode } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    target: ContextTarget;
+    x: number;
+    y: number;
+  } | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const openContextMenu = (target: ContextTarget) => (event: React.MouseEvent) => {
+    event.preventDefault();
+    // A row's menu wins over the one for the empty list behind it.
+    event.stopPropagation();
+    setContextMenu({ target, x: event.clientX, y: event.clientY });
+  };
   const match = (name: string) => name.toLowerCase().includes(query.trim().toLowerCase());
   const examples = EXAMPLES.filter((example) => match(example.fileName) || match(example.title));
   const myFiles = files.filter((file) => match(file.name));
+
+  const copyExample = (example: Example) => onNewFile(example.fileName, example.source);
 
   const newFileItems: (MenuItem | "separator")[] = [
     ...LANGUAGES.map((language) => ({
@@ -190,9 +231,36 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
     "separator",
     ...EXAMPLES.map((example) => ({
       label: `From ${example.title}`,
-      onSelect: () => onNewFile(example.fileName, example.source),
+      onSelect: () => copyExample(example),
     })),
   ];
+
+  const contextItems = (target: ContextTarget): readonly (MenuItem | "separator")[] => {
+    if (target.kind === "file") {
+      const { file } = target;
+      return fileMenuItems({
+        onOpen: () => onOpen({ kind: "file", id: file.id }),
+        onMode: (mode) => setEditing({ id: file.id, mode }),
+        onDuplicate: () => onDuplicate(file.id),
+      });
+    }
+    if (target.kind === "example") {
+      const { example } = target;
+      return [
+        {
+          label: "Open",
+          icon: <Hexagon size={14} />,
+          onSelect: () => onOpen({ kind: "example", id: example.id }),
+        },
+        {
+          label: "Copy to my files",
+          icon: <Copy size={14} />,
+          onSelect: () => copyExample(example),
+        },
+      ];
+    }
+    return newFileItems;
+  };
 
   return (
     <div className="flex h-full w-[232px] flex-col">
@@ -261,17 +329,22 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
         <kbd className="text-[11px] text-faint">⌘K</kbd>
       </label>
 
-      <nav aria-label="Files" className="thin-scroll mt-5 min-h-0 flex-1 overflow-y-auto px-3">
+      <nav
+        aria-label="Files"
+        onContextMenu={openContextMenu({ kind: "background" })}
+        className="thin-scroll mt-5 min-h-0 flex-1 overflow-y-auto px-3"
+      >
         <h2 className="px-2 pb-1.5 text-[13px] font-semibold text-ink">Examples</h2>
         <div className="flex flex-col gap-0.5">
           {examples.map((example, index) => (
             <ItemButton
               key={example.id}
               index={index}
-              active={active.kind === "example" && active.id === example.id}
+              active={active?.kind === "example" && active.id === example.id}
               icon={<Hexagon size={16} strokeWidth={1.7} />}
               label={example.id === "getting-started" ? example.title : example.fileName}
               onClick={() => onOpen({ kind: "example", id: example.id })}
+              onContextMenu={openContextMenu({ kind: "example", example })}
             />
           ))}
           {examples.length === 0 && <p className="px-3 py-1 text-[12px] text-faint">No matches</p>}
@@ -290,8 +363,11 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
                 <FileRow
                   file={file}
                   index={index}
-                  active={active.kind === "file" && active.id === file.id}
+                  active={active?.kind === "file" && active.id === file.id}
+                  mode={editing?.id === file.id ? editing.mode : null}
+                  onMode={(mode) => setEditing(mode ? { id: file.id, mode } : null)}
                   onOpen={() => onOpen({ kind: "file", id: file.id })}
+                  onContextMenu={openContextMenu({ kind: "file", file })}
                   onRename={(name) => onRename(file.id, name)}
                   onDuplicate={() => onDuplicate(file.id)}
                   onDelete={() => onDelete(file.id)}
@@ -320,6 +396,12 @@ export const Sidebar = forwardRef<HTMLInputElement, SidebarProps>(function Sideb
           />
         </button>
       </div>
+      <ContextMenu
+        at={contextMenu}
+        items={contextMenu ? contextItems(contextMenu.target) : []}
+        label={contextMenu?.target.kind === "background" ? "New file" : "File actions"}
+        onClose={closeContextMenu}
+      />
     </div>
   );
 });
