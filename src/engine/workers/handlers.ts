@@ -4,11 +4,13 @@ import type {
   ExecuteRequest,
   RuntimeRequest,
   RuntimeWorkerMessage,
+  ServiceRequest,
+  ServiceResponse,
   TestRequest,
 } from "../core/protocol/messages";
 import { encodeEvents } from "../core/protocol/eventCodec";
 import { TraceRecorder } from "../core/runtime/TraceRecorder";
-import { loadCompiler, loadRuntime } from "../languages/registry";
+import { loadCompiler, loadRuntime, loadService } from "../languages/registry";
 import type { LanguageRuntime } from "../languages/types";
 
 type Post<T> = (message: T) => void;
@@ -46,6 +48,30 @@ export const handleCompile = async (
       message: `Compiler crashed: ${errorText(error)}`,
     });
   }
+};
+
+/**
+ * Answers one editor question from the language service. Never throws: a language without a
+ * service, or a failing one, answers `null` and the editor carries on without it.
+ */
+export const handleService = async (
+  request: ServiceRequest,
+  post: Post<ServiceResponse>,
+): Promise<void> => {
+  let result: ServiceResponse["result"] = null;
+  try {
+    const service = await loadService(request.languageId);
+    if (service) {
+      service.update(request.source);
+      const { call } = request;
+      if (call.method === "diagnostics") result = service.diagnostics();
+      else if (call.method === "complete") result = service.complete(call.pos, call.explicit);
+      else result = service.hover(call.pos);
+    }
+  } catch {
+    result = null;
+  }
+  post({ type: "service-result", id: request.id, result });
 };
 
 export interface RuntimeEnvironment {

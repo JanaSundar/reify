@@ -1,4 +1,6 @@
 import type { LanguageId } from "./catalog";
+import type { PyodideAPI } from "pyodide";
+import type { LanguageService } from "../core/protocol/languageService";
 import type { LanguageCompiler, LanguageRuntime } from "./types";
 
 /**
@@ -18,12 +20,25 @@ const javascriptRuntime: Factory<LanguageRuntime> = async (languageId) => {
   return new JavaScriptRuntime(languageId);
 };
 
+/** One Pyodide per worker, shared by the Python compiler and the Python language service. */
+let pyodide: Promise<PyodideAPI> | null = null;
+const sharedPyodide = (): Promise<PyodideAPI> => {
+  if (!pyodide) {
+    pyodide = import("./python/pyodide").then(({ loadPyodideRuntime }) => loadPyodideRuntime());
+    // A failed load (e.g. a network error) is retried next time.
+    pyodide.catch(() => (pyodide = null));
+  }
+  return pyodide;
+};
+
 const pythonCompiler: Factory<LanguageCompiler> = async (languageId) => {
-  const [{ PythonCompiler }, { loadPyodideRuntime }] = await Promise.all([
-    import("./python/compiler/PythonCompiler"),
-    import("./python/pyodide"),
-  ]);
-  return PythonCompiler.create(languageId, await loadPyodideRuntime());
+  const { PythonCompiler } = await import("./python/compiler/PythonCompiler");
+  return PythonCompiler.create(languageId, await sharedPyodide());
+};
+
+const pythonService: Factory<LanguageService> = async () => {
+  const { PythonService } = await import("./python/service/PythonService");
+  return PythonService.create(await sharedPyodide());
 };
 
 const pythonRuntime: Factory<LanguageRuntime> = async (languageId) => {
@@ -43,7 +58,12 @@ const RUNTIMES: Readonly<Record<LanguageId, Factory<LanguageRuntime>>> = {
   python: pythonRuntime,
 };
 
-const memoize = <T>(factories: Readonly<Record<LanguageId, Factory<T>>>) => {
+/** Languages with editor intelligence in the compiler worker (the rest run elsewhere). */
+const SERVICES: Readonly<Partial<Record<LanguageId, Factory<LanguageService>>>> = {
+  python: pythonService,
+};
+
+const memoize = <T>(factories: Readonly<Partial<Record<LanguageId, Factory<T>>>>) => {
   const cache = new Map<string, Promise<T>>();
   return (languageId: string): Promise<T> | null => {
     const factory = Object.hasOwn(factories, languageId)
@@ -63,3 +83,4 @@ const memoize = <T>(factories: Readonly<Record<LanguageId, Factory<T>>>) => {
 
 export const loadCompiler = memoize(COMPILERS);
 export const loadRuntime = memoize(RUNTIMES);
+export const loadService = memoize(SERVICES);

@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Self-hosted Pyodide, copied from node_modules by scripts/copy-pyodide.mjs
 /public/pyodide/
+
+# TypeScript lib declarations, bundled by scripts/copy-ts-libs.mjs
+/public/ts-libs/

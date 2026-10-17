@@ -1,16 +1,16 @@
 "use client";
 
-import {
-  autocompletion,
-  closeBrackets,
-  closeBracketsKeymap,
-  completionKeymap,
-} from "@codemirror/autocomplete";
+import { closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { javascript, javascriptLanguage, scopeCompletionSource } from "@codemirror/lang-javascript";
+import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, indentOnInput, indentUnit } from "@codemirror/language";
-import { lintGutter, setDiagnostics, type Diagnostic as CmDiagnostic } from "@codemirror/lint";
+import {
+  forceLinting,
+  lintGutter,
+  linter,
+  type Diagnostic as CmDiagnostic,
+} from "@codemirror/lint";
 import { Compartment, EditorState, type Extension, type Text } from "@codemirror/state";
 import {
   drawSelection,
@@ -23,9 +23,11 @@ import {
 import { useEffect, useLayoutEffect, useRef } from "react";
 import type { SourceRange } from "@/engine/core/protocol/program";
 import type { LanguageId } from "@/engine/languages/catalog";
+import type { LanguageServiceClient } from "@/engine/core/protocol/languageService";
 import { syntaxColors } from "./highlight";
 import { breakpointGutter, setBreakpoints } from "./breakpoints";
 import { executionLine, executionMarkEffects, type ExecutionMark } from "./executionLine";
+import { languageServiceExtension } from "./languageServiceExtension";
 
 export interface EditorDiagnostic {
   readonly severity: "error" | "warning";
@@ -41,6 +43,10 @@ interface CodeEditorProps {
   readonly breakpoints: readonly number[];
   readonly onToggleBreakpoint: (line: number) => void;
   readonly onChange: (value: string) => void;
+  /** The language service for a language, or null when it has none. */
+  readonly serviceFor: (languageId: LanguageId) => LanguageServiceClient | null;
+  /** Reports how many errors the language service currently finds (0 without one). */
+  readonly onServiceErrors: (count: number) => void;
   /** Longest document the editor accepts; edits that would exceed it are rejected. */
   readonly maxLength: number;
   readonly onLimit: () => void;
@@ -48,10 +54,7 @@ interface CodeEditorProps {
   readonly onCancel: () => boolean;
 }
 
-/** Builtins offered by autocomplete in addition to local identifiers and keywords. */
-const COMPLETION_SCOPE = { Math, Array, Object, Map, Set, Number, String, JSON, console, Infinity };
-
-/** Syntax support per language (the JS completion source only attaches to JS documents). */
+/** Syntax support per language; completions come from the language service. */
 const LANGUAGE_SUPPORT: Record<LanguageId, () => Extension> = {
   javascript: () => javascript(),
   typescript: () => javascript({ typescript: true }),
@@ -91,6 +94,8 @@ export function CodeEditor({
   breakpoints,
   onToggleBreakpoint,
   onChange,
+  serviceFor,
+  onServiceErrors,
   maxLength,
   onLimit,
   onRun,
@@ -99,12 +104,35 @@ export function CodeEditor({
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const language = useRef(new Compartment());
-  const callbacks = useRef({ onChange, onLimit, onRun, onCancel, onToggleBreakpoint });
+  const intelligence = useRef(new Compartment());
+  const service = useRef<LanguageServiceClient | null>(null);
+  const appliedLanguage = useRef(languageId);
+  const callbacks = useRef({
+    serviceFor,
+    onChange,
+    onServiceErrors,
+    onLimit,
+    onRun,
+    onCancel,
+    onToggleBreakpoint,
+  });
+  const external = useRef(diagnostics);
   useLayoutEffect(() => {
-    callbacks.current = { onChange, onLimit, onRun, onCancel, onToggleBreakpoint };
+    callbacks.current = {
+      serviceFor,
+      onChange,
+      onServiceErrors,
+      onLimit,
+      onRun,
+      onCancel,
+      onToggleBreakpoint,
+    };
+    external.current = diagnostics;
   });
 
   useEffect(() => {
+    service.current = callbacks.current.serviceFor(languageId);
+    service.current?.update(initialValue);
     const state = EditorState.create({
       doc: initialValue,
       extensions: [
@@ -126,9 +154,28 @@ export function CodeEditor({
         highlightActiveLine(),
         syntaxColors(),
         language.current.of(LANGUAGE_SUPPORT[languageId]()),
-        javascriptLanguage.data.of({ autocomplete: scopeCompletionSource(COMPLETION_SCOPE) }),
-        autocompletion(),
+        intelligence.current.of(languageServiceExtension(service.current)),
         lintGutter(),
+        // One source for everything the editor underlines: compile and runtime diagnostics
+        // from props plus whatever the language service finds (syntax and type errors).
+        linter(
+          async (editorView) => {
+            const { doc } = editorView.state;
+            const fromProps = toCmDiagnostics(doc, external.current);
+            const client = service.current;
+            if (!client) {
+              callbacks.current.onServiceErrors(0);
+              return fromProps;
+            }
+            await client.ready;
+            const found = await client.diagnostics();
+            // The document moved on while the worker was busy; the next pass will catch up.
+            if (editorView.state.doc !== doc) return fromProps;
+            callbacks.current.onServiceErrors(found.filter((d) => d.severity === "error").length);
+            return [...fromProps, ...toCmDiagnostics(doc, found)];
+          },
+          { delay: 400 },
+        ),
         executionLine(),
         keymap.of([
           { key: "Mod-Enter", preventDefault: true, run: () => (callbacks.current.onRun(), true) },
@@ -156,9 +203,20 @@ export function CodeEditor({
   }, []);
 
   useEffect(() => {
-    view.current?.dispatch({
-      effects: language.current.reconfigure(LANGUAGE_SUPPORT[languageId]()),
+    const editor = view.current;
+    // The editor was created with this language; only a change needs reconfiguring.
+    if (!editor || appliedLanguage.current === languageId) return;
+    appliedLanguage.current = languageId;
+    const client = callbacks.current.serviceFor(languageId);
+    service.current = client;
+    client?.update(editor.state.doc.toString());
+    editor.dispatch({
+      effects: [
+        language.current.reconfigure(LANGUAGE_SUPPORT[languageId]()),
+        intelligence.current.reconfigure(languageServiceExtension(client)),
+      ],
     });
+    forceLinting(editor);
   }, [languageId]);
 
   useEffect(() => {
@@ -167,9 +225,7 @@ export function CodeEditor({
   }, [execution]);
 
   useEffect(() => {
-    const editor = view.current;
-    if (editor)
-      editor.dispatch(setDiagnostics(editor.state, toCmDiagnostics(editor.state.doc, diagnostics)));
+    if (view.current) forceLinting(view.current);
   }, [diagnostics]);
 
   useEffect(() => {

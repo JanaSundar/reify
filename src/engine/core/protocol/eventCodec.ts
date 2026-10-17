@@ -42,7 +42,7 @@ const HEAP_KINDS: readonly HeapKind[] = [
   "callable",
   "opaque",
 ];
-const CONSOLE_LEVELS: readonly ConsoleLevel[] = ["log", "info", "warn", "error", "debug"];
+export const CONSOLE_LEVELS: readonly ConsoleLevel[] = ["log", "info", "warn", "error", "debug"];
 
 /** Tags of optional numbers and of `number | string` slot keys. */
 const Scalar = { Absent: 0, Int: 1, Float: 2, String: 3 } as const;

@@ -1,12 +1,13 @@
 import type { TestSuite } from "@/engine/core/protocol/testing";
 import {
+  DEFAULT_LANGUAGE,
   languageById,
   languageOfFile,
   withLanguageExtension,
   type Language,
   type LanguageId,
 } from "@/engine/languages/catalog";
-import { EXAMPLES, findExample } from "@/content/examples";
+import { findExample } from "@/content/examples";
 import { STARTER_SOURCE, STARTER_SUITE } from "./draft";
 
 /**
@@ -27,7 +28,8 @@ export interface WorkspaceFile {
 export interface WorkspaceState {
   readonly files: readonly WorkspaceFile[];
   readonly tabs: readonly DocRef[];
-  readonly active: DocRef;
+  /** The open document; null when every tab has been closed. */
+  readonly active: DocRef | null;
   /** Session edits of examples (source and tests), by example id. */
   readonly exampleEdits: Readonly<Record<string, string>>;
   readonly exampleSuites: Readonly<Record<string, TestSuite>>;
@@ -45,9 +47,13 @@ export interface OpenDoc {
   readonly editable: boolean;
 }
 
+/** Which tabs a bulk close removes, relative to the tab it was started from. */
+export type CloseScope = "others" | "right" | "all";
+
 export type WorkspaceAction =
   | { readonly type: "open"; readonly ref: DocRef }
   | { readonly type: "close"; readonly ref: DocRef }
+  | { readonly type: "closeTabs"; readonly scope: CloseScope; readonly ref: DocRef }
   | { readonly type: "edit"; readonly source: string }
   | { readonly type: "suite"; readonly suite: TestSuite }
   | {
@@ -100,7 +106,8 @@ export const uniqueName = (files: readonly WorkspaceFile[], name: string): strin
   }
 };
 
-export const resolveDoc = (state: WorkspaceState, ref: DocRef): OpenDoc | null => {
+export const resolveDoc = (state: WorkspaceState, ref: DocRef | null): OpenDoc | null => {
+  if (!ref) return null;
   if (ref.kind === "file") {
     const file = state.files.find((f) => f.id === ref.id);
     if (!file) return null;
@@ -147,20 +154,28 @@ const open = (state: WorkspaceState, ref: DocRef): WorkspaceState =>
       }
     : state;
 
+const closeTabs = (state: WorkspaceState, scope: CloseScope, ref: DocRef): WorkspaceState => {
+  const index = state.tabs.findIndex((tab) => sameDoc(tab, ref));
+  if (index < 0) return state;
+  const keep = (i: number): boolean =>
+    scope === "all" ? false : scope === "others" ? i === index : i <= index;
+  const tabs = state.tabs.filter((_, i) => keep(i));
+  if (tabs.length === 0) return { ...state, tabs, active: null };
+  // The tab the menu was opened on stays; an active tab that was closed gives way to it.
+  const active =
+    state.active && tabs.some((tab) => sameDoc(tab, state.active!)) ? state.active : ref;
+  return { ...state, tabs, active };
+};
+
 const close = (state: WorkspaceState, ref: DocRef): WorkspaceState => {
   const index = state.tabs.findIndex((tab) => sameDoc(tab, ref));
   if (index < 0) return state;
   const tabs = state.tabs.filter((_, i) => i !== index);
-  if (tabs.length === 0) {
-    // Always keep one document open.
-    const fallback: DocRef = state.files[0]
-      ? { kind: "file", id: state.files[0].id }
-      : { kind: "example", id: EXAMPLES[0]!.id };
-    return { ...state, tabs: [fallback], active: fallback };
-  }
-  const active = sameDoc(state.active, ref)
-    ? tabs[Math.min(index, tabs.length - 1)]!
-    : state.active;
+  if (tabs.length === 0) return { ...state, tabs, active: null };
+  const active =
+    state.active && sameDoc(state.active, ref)
+      ? tabs[Math.min(index, tabs.length - 1)]!
+      : state.active;
   return { ...state, tabs, active };
 };
 
@@ -174,11 +189,15 @@ export const workspaceReducer = (
       return open(state, action.ref);
     case "close":
       return close(state, action.ref);
+    case "closeTabs":
+      return closeTabs(state, action.scope, action.ref);
     case "edit":
+      if (!active) return state;
       return active.kind === "file"
         ? updateFile(state, active.id, (file) => ({ ...file, source: action.source }))
         : { ...state, exampleEdits: { ...state.exampleEdits, [active.id]: action.source } };
     case "suite":
+      if (!active) return state;
       return active.kind === "file"
         ? updateFile(state, active.id, (file) => ({ ...file, suite: action.suite }))
         : { ...state, exampleSuites: { ...state.exampleSuites, [active.id]: action.suite } };
@@ -211,11 +230,11 @@ export const workspaceReducer = (
       const files = closed.files.filter((file) => file.id !== action.id);
       const { [docKey(ref)]: _removed, ...breakpoints } = closed.breakpoints;
       const next = { ...closed, files, breakpoints };
-      // Closing may have fallen back to the deleted file itself; pick something that exists.
-      return exists(next, next.active) ? next : close(next, next.active);
+      // An active tab that no longer resolves gives way to the next open one (or none).
+      return next.active && !exists(next, next.active) ? close(next, next.active) : next;
     }
     case "language": {
-      if (active.kind !== "file") return state;
+      if (active?.kind !== "file") return state;
       const target = languageById(action.languageId);
       return updateFile(state, active.id, (file) =>
         canSwitchLanguage(file)
@@ -232,6 +251,7 @@ export const workspaceReducer = (
       );
     }
     case "toggleBreakpoint": {
+      if (!active) return state;
       const key = docKey(active);
       const lines = state.breakpoints[key] ?? [];
       const next = lines.includes(action.line)
@@ -240,6 +260,7 @@ export const workspaceReducer = (
       return { ...state, breakpoints: { ...state.breakpoints, [key]: next } };
     }
     case "clearBreakpoints":
+      if (!active) return state;
       return { ...state, breakpoints: { ...state.breakpoints, [docKey(active)]: [] } };
     case "reset":
       return initialWorkspace();
@@ -304,7 +325,9 @@ export const loadWorkspace = (): WorkspaceState => {
         (ref): ref is DocRef => isRef(ref) && exists(base, ref),
       );
       const active = isRef(parsed.active) && exists(base, parsed.active) ? parsed.active : tabs[0];
-      return active ? open({ ...base, tabs }, active) : base;
+      if (active) return open({ ...base, tabs }, active);
+      // Everything was closed last time: keep it that way (files are still in the sidebar).
+      return parsed.active === null && tabs.length === 0 ? { ...base, tabs, active: null } : base;
     }
   } catch {
     // Corrupt or unavailable storage: start fresh.
@@ -330,3 +353,14 @@ export const newFileId = (): string =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `f-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** Stands in for the open document while none is, so views that read it need no null checks. */
+export const BLANK_DOC: OpenDoc = {
+  ref: { kind: "file", id: "" },
+  key: "none",
+  name: "",
+  source: "",
+  suite: EMPTY_SUITE,
+  languageId: DEFAULT_LANGUAGE.id,
+  editable: false,
+};

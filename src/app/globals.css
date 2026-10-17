@@ -158,20 +158,89 @@ pre,
 .cm-focused .cm-selectionBackground {
   background: var(--accent-soft) !important;
 }
+/* Floating panels (autocomplete, hover, lint) share the menu look: ring, soft radius, shadow. */
 .cm-tooltip {
   background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px;
+  border: none !important;
+  border-radius: 12px !important;
   color: var(--text);
-  box-shadow: var(--shadow-float);
+  box-shadow:
+    0 0 0 1px var(--border),
+    var(--shadow-float);
   overflow: hidden;
+  font-size: 13px;
 }
-.cm-tooltip-autocomplete ul li[aria-selected] {
+.cm-tooltip-autocomplete > ul {
+  max-height: 15rem;
+  min-width: 12rem;
+  padding: 4px;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace !important;
+  font-size: 12.5px;
+}
+.cm-tooltip-autocomplete > ul > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px !important;
+  border-radius: 8px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
   background: var(--accent-soft) !important;
   color: var(--text) !important;
 }
+.cm-completionIcon {
+  width: 1em;
+  padding: 0;
+  opacity: 0.6;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cm-completionLabel {
+  flex: 1;
+}
+.cm-completionMatchedText {
+  text-decoration: none !important;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+.cm-completionDetail {
+  margin: 0 !important;
+  font-style: normal !important;
+  color: var(--faint);
+}
+.cm-tooltip.cm-completionInfo {
+  padding: 8px 10px;
+  max-width: 22rem;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .cm-tooltip-lint {
-  padding: 2px;
+  padding: 4px;
+}
+.cm-diagnostic {
+  padding: 4px 8px;
+  border-left-width: 2px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.cm-tooltip-hover {
+  padding: 6px 10px;
+  max-width: 28rem;
+}
+.cm-hover-signature {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.cm-hover-docs {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* Resizable panel handles: a small pill centred on the gap, oriented with the split. */
